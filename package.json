@@ -9,7 +9,7 @@
     "readme.md"
   ],
   "bin": {
-    "ph": "./bin/ph"
+    "ph": "./bin/ph.mjs"
   },
   "type": "module",
   "engines": {
