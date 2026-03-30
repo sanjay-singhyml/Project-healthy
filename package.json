@@ -1,8 +1,13 @@
 {
   "name": "project-health",
-  "version": "2.0.0",
+  "version": "1.0.1",
   "description": "AI-powered health score for software repositories - CLI tool with 8 parallel analysis modules",
   "main": "dist/index.js",
+  "files": [
+    "dist",
+    "bin",
+    "readme.md"
+  ],
   "bin": {
     "ph": "./bin/ph"
   },
@@ -20,7 +25,7 @@
     "lint": "eslint src --ext .ts",
     "format": "prettier --write \"src/**/*.ts\"",
     "pkg": "npx @yao-pkg/pkg . --targets node18-linux-x64,node18-macos-x64,node18-macos-arm64,node18-win-x64 --output ph-binaries",
-    "prepare": "husky install"
+    "prepare": "husky"
   },
   "keywords": [
     "cli",

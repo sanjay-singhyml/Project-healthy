@@ -84,7 +84,7 @@ function aggregateByDate(
         topFinding: latestEntry.topFinding,
       };
     })
-    .filter((e): e is HistoryEntry => e !== null)
+    .filter((e): e is NonNullable<typeof e> => e !== null)
     .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
 }
 
