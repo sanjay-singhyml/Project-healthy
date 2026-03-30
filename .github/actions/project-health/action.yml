@@ -1,0 +1,391 @@
+name: "Project Health Scan"
+description: "Run project-health analysis, post PR comments, set check status, upload SARIF"
+author: "project-health"
+branding:
+  color: green
+  icon: shield-check
+
+inputs:
+  fail-under:
+    description: "Minimum score threshold (exit code 1 if below)"
+    required: false
+    default: "60"
+  format:
+    description: "Output format (json, html, terminal)"
+    required: false
+    default: "json"
+  github-token:
+    description: "GitHub token for posting PR comments and check runs"
+    required: false
+    default: ${{ github.token }}
+  module:
+    description: "Run specific module only (e.g., M-01)"
+    required: false
+  comment-update:
+    description: "Update existing PR comment instead of creating new ones"
+    required: false
+    default: "true"
+  comment-header:
+    description: "Header marker for finding existing comments to update"
+    required: false
+    default: "<!-- project-health-scan -->"
+  upload-sarif:
+    description: "Upload SARIF results to GitHub Code Scanning"
+    required: false
+    default: "false"
+
+outputs:
+  score:
+    description: "Overall health score (0-100)"
+    value: ${{ steps.scan.outputs.score }}
+  status:
+    description: "Scan status: pass or fail"
+    value: ${{ steps.scan.outputs.status }}
+  findings-count:
+    description: "Total number of findings"
+    value: ${{ steps.scan.outputs.findings-count }}
+  report-path:
+    description: "Path to the JSON report file"
+    value: ${{ steps.scan.outputs.report-path }}
+  sarif-path:
+    description: "Path to the SARIF file (if upload-sarif is true)"
+    value: ${{ steps.sarif.outputs.sarif-path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "20"
+
+    - name: Install project-health
+      shell: bash
+      run: |
+        npm install -g project-health@latest
+
+    - name: Run health scan
+      id: scan
+      shell: bash
+      env:
+        PH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        set +e
+
+        REPORT_FILE="${{ github.workspace }}/.ph-cache/last-scan.json"
+        SARIF_FILE="${{ github.workspace }}/.ph-cache/scan-results.sarif"
+
+        # Build scan arguments
+        SCAN_ARGS="--format json"
+        SCAN_ARGS="$SCAN_ARGS --fail-under ${{ inputs.fail-under }}"
+
+        if [ -n "${{ inputs.module }}" ]; then
+          SCAN_ARGS="$SCAN_ARGS --module ${{ inputs.module }}"
+        fi
+
+        # Run scan — JSON goes to stdout, also saved to .ph-cache/
+        ph scan $SCAN_ARGS > /tmp/ph-scan-output.json 2>/tmp/ph-scan-stderr.txt
+        SCAN_EXIT=$?
+
+        # Use the cached report file (ph scan always writes it)
+        if [ -f "$REPORT_FILE" ]; then
+          cp "$REPORT_FILE" /tmp/ph-report.json
+        elif [ -s /tmp/ph-scan-output.json ]; then
+          cp /tmp/ph-scan-output.json /tmp/ph-report.json
+        else
+          echo '{"score":0,"modules":[],"findings":[],"topActions":["Scan failed to produce output"]}' > /tmp/ph-report.json
+        fi
+
+        # Extract score and metadata from report
+        SCORE=$(jq -r '.score // 0' /tmp/ph-report.json 2>/dev/null || echo "0")
+        FINDINGS_COUNT=$(jq '.findings | length' /tmp/ph-report.json 2>/dev/null || echo "0")
+        STATUS="pass"
+        if [ "$SCAN_EXIT" -ne 0 ]; then
+          STATUS="fail"
+        fi
+
+        # Set outputs
+        echo "score=${SCORE}" >> "$GITHUB_OUTPUT"
+        echo "status=${STATUS}" >> "$GITHUB_OUTPUT"
+        echo "findings-count=${FINDINGS_COUNT}" >> "$GITHUB_OUTPUT"
+        echo "report-path=/tmp/ph-report.json" >> "$GITHUB_OUTPUT"
+        echo "scan-exit-code=${SCAN_EXIT}" >> "$GITHUB_OUTPUT"
+
+        # Summary
+        echo "### Project Health Score: ${SCORE}/100" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        if [ "$STATUS" = "fail" ]; then
+          echo "**Status**: ❌ Below threshold (${{ inputs.fail-under }})" >> "$GITHUB_STEP_SUMMARY"
+        else
+          echo "**Status**: ✅ Passed" >> "$GITHUB_STEP_SUMMARY"
+        fi
+        echo "**Findings**: ${FINDINGS_COUNT}" >> "$GITHUB_STEP_SUMMARY"
+
+        # Don't fail the step here — let later steps handle pass/fail
+        exit 0
+
+    - name: Generate SARIF output
+      id: sarif
+      if: inputs.upload-sarif == 'true'
+      shell: bash
+      run: |
+        SARIF_FILE="${{ github.workspace }}/.ph-cache/scan-results.sarif"
+        ph scan --format sarif > "$SARIF_FILE" 2>/dev/null || true
+
+        if [ -f "$SARIF_FILE" ]; then
+          echo "sarif-path=${SARIF_FILE}" >> "$GITHUB_OUTPUT"
+          echo "Generated SARIF file at ${SARIF_FILE}"
+        else
+          echo "Warning: SARIF file not generated"
+          echo "sarif-path=" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload SARIF to GitHub
+      if: inputs.upload-sarif == 'true' && steps.sarif.outputs.sarif-path != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: ${{ steps.sarif.outputs.sarif-path }}
+      continue-on-error: true
+
+    - name: Post or Update PR Comment
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+          const commentHeader = '${{ inputs.comment-header }}';
+          const updateExisting = '${{ inputs.comment-update }}' === 'true';
+
+          // Read the report
+          let report;
+          try {
+            report = JSON.parse(fs.readFileSync('/tmp/ph-report.json', 'utf8'));
+          } catch (e) {
+            core.warning('Could not parse scan report: ' + e.message);
+            return;
+          }
+
+          const score = report.score || 0;
+          const scoreBand = score >= 90 ? { emoji: '🟢', label: 'EXCELLENT' }
+                            : score >= 75 ? { emoji: '🔵', label: 'GOOD' }
+                            : score >= 60 ? { emoji: '🟡', label: 'MODERATE' }
+                            : score >= 40 ? { emoji: '🟠', label: 'HIGH RISK' }
+                            : { emoji: '🔴', label: 'CRITICAL' };
+
+          // Build module table rows
+          let moduleRows = '';
+          for (const mod of (report.modules || [])) {
+            const icon = mod.status === 'ok' ? '✅' : mod.status === 'warning' ? '⚠️' : '❌';
+            moduleRows += `| ${mod.moduleName} | ${mod.moduleId} | ${mod.score}/100 | ${icon} |\n`;
+          }
+
+          // Build findings summary (top 10 by severity)
+          const severityOrder = { CRITICAL: 0, HIGH: 1, MEDIUM: 2, LOW: 3 };
+          const sortedFindings = [...(report.findings || [])]
+            .sort((a, b) => (severityOrder[a.severity] ?? 99) - (severityOrder[b.severity] ?? 99));
+
+          let findingsRows = '';
+          for (const f of sortedFindings.slice(0, 10)) {
+            const sevIcon = f.severity === 'CRITICAL' ? '🔴' : f.severity === 'HIGH' ? '🟠' : f.severity === 'MEDIUM' ? '🟡' : '🔵';
+            const loc = f.file ? `\`${f.file}${f.line ? ':' + f.line : ''}\`` : '-';
+            findingsRows += `| ${sevIcon} ${f.severity} | ${f.type} | ${loc} | ${f.message.slice(0, 80)} |\n`;
+          }
+
+          // Build top actions
+          let actionsSection = '';
+          if (report.topActions && report.topActions.length > 0) {
+            actionsSection = '### 🎯 Recommended Actions\n\n';
+            for (const action of report.topActions.slice(0, 3)) {
+              actionsSection += `- ${action}\n`;
+            }
+          }
+
+          // Compose comment body
+          const body = `${commentHeader}
+          ## 📊 Project Health Scan
+
+          | Metric | Value |
+          |--------|-------|
+          | **Overall Score** | ${scoreBand.emoji} **${score}/100** (${scoreBand.label}) |
+          | **Findings** | ${sortedFindings.length} total |
+          | **Threshold** | ${${{ inputs.fail-under }}} |
+
+          ### Module Breakdown
+
+          | Module | ID | Score | Status |
+          |--------|-----|-------|--------|
+          ${moduleRows}
+          ${findingsRows ? `### 🔍 Top Findings\n\n| Severity | Type | Location | Message |\n|----------|------|----------|---------|\n${findingsRows}` : ''}
+          ${actionsSection}
+          ---
+          ${score < ${{ inputs.fail-under }} ? '⚠️ **Score is below the required threshold of ' + ${{ inputs.fail-under }} + '. This check has failed.**' : '✅ All checks passed.'}
+          *Scanned by [project-health](https://github.com/project-health/ph) • ${new Date().toISOString().slice(0, 10)}*`;
+
+          // Find and update existing comment or create new
+          if (updateExisting) {
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              per_page: 100,
+            });
+
+            const existing = comments.find(c => c.body.includes(commentHeader));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: body,
+              });
+              core.info('Updated existing PR comment');
+              return;
+            }
+          }
+
+          // Create new comment
+          await github.rest.issues.createComment({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+            body: body,
+          });
+          core.info('Created new PR comment');
+
+    - name: Post Comment on Push
+      if: github.event_name == 'push'
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+
+          let report;
+          try {
+            report = JSON.parse(fs.readFileSync('/tmp/ph-report.json', 'utf8'));
+          } catch (e) {
+            return;
+          }
+
+          const score = report.score || 0;
+          const scoreBand = score >= 90 ? '🟢 EXCELLENT' : score >= 75 ? '🔵 GOOD'
+                            : score >= 60 ? '🟡 MODERATE' : score >= 40 ? '🟠 HIGH RISK' : '🔴 CRITICAL';
+
+          const body = `## 📊 Project Health: ${score}/100 (${scoreBand})
+
+          | Module | Score | Status |
+          |--------|-------|--------|
+          ${(report.modules || []).map(m => {
+            const icon = m.status === 'ok' ? '✅' : m.status === 'warning' ? '⚠️' : '❌';
+            return `| ${m.moduleName} | ${m.score}/100 | ${icon} |`;
+          }).join('\n')}
+
+          ${report.topActions && report.topActions.length > 0 ?
+            '### 🎯 Actions\n' + report.topActions.slice(0, 3).map(a => `- ${a}`).join('\n') : ''}
+          *Scanned by [project-health](https://github.com/project-health/ph)*`;
+
+          // Create a commit status instead of a comment on push
+          const state = score >= ${{ inputs.fail-under }} ? 'success' : 'failure';
+          await github.rest.repos.createCommitStatus({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            sha: context.sha,
+            state: state,
+            target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+            description: `Health score: ${score}/100 (${scoreBand})`,
+            context: 'Project Health',
+          });
+          core.info(`Set commit status: ${state} (score: ${score})`);
+
+    - name: Create Check Run
+      if: always()
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github-token }}
+        script: |
+          const fs = require('fs');
+
+          let report;
+          try {
+            report = JSON.parse(fs.readFileSync('/tmp/ph-report.json', 'utf8'));
+          } catch (e) {
+            report = { score: 0, modules: [], findings: [], topActions: [] };
+          }
+
+          const score = report.score || 0;
+          const exitCode = parseInt('${{ steps.scan.outputs.scan-exit-code }}' || '0');
+          const passed = exitCode === 0;
+
+          // Build check run summary
+          let summary = `## Project Health Score: ${score}/100\n\n`;
+          summary += `| Module | Score | Status |\n|--------|-------|--------|\n`;
+          for (const mod of (report.modules || [])) {
+            const icon = mod.status === 'ok' ? '✅' : mod.status === 'warning' ? '⚠️' : '❌';
+            summary += `| ${mod.moduleName} | ${mod.score}/100 | ${icon} |\n`;
+          }
+
+          // Build annotations for critical/high findings (max 50)
+          const annotations = [];
+          for (const f of (report.findings || []).filter(
+            f => f.severity === 'CRITICAL' || f.severity === 'HIGH'
+          ).slice(0, 50)) {
+            if (f.file) {
+              annotations.push({
+                path: f.file,
+                start_line: f.line || 1,
+                end_line: f.line || 1,
+                annotation_level: f.severity === 'CRITICAL' ? 'failure' : 'warning',
+                message: f.message,
+                title: `${f.severity}: ${f.type}`,
+              });
+            }
+          }
+
+          // Build findings text
+          let findingsText = '';
+          if (report.findings && report.findings.length > 0) {
+            const bySev = {};
+            for (const f of report.findings) {
+              bySev[f.severity] = (bySev[f.severity] || 0) + 1;
+            }
+            findingsText = `\n**Findings**: ${Object.entries(bySev).map(([k,v]) => `${v} ${k}`).join(', ')}`;
+          }
+
+          const checkData = {
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            name: 'Project Health',
+            head_sha: context.sha,
+            status: 'completed',
+            conclusion: passed ? 'success' : 'failure',
+            output: {
+              title: passed ? `✅ Health Score: ${score}/100` : `❌ Health Score: ${score}/100 (below ${{ inputs.fail-under }})`,
+              summary: summary + findingsText,
+              annotations: annotations,
+            },
+          };
+
+          try {
+            await github.rest.checks.create(checkData);
+            core.info('Created check run');
+          } catch (e) {
+            // Fall back to commit status if checks API not available
+            core.warning('Check run creation failed (missing permission?): ' + e.message);
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: passed ? 'success' : 'failure',
+              description: `Health score: ${score}/100`,
+              context: 'Project Health',
+            });
+          }
+
+    - name: Fail if below threshold
+      if: steps.scan.outputs.scan-exit-code != '0'
+      shell: bash
+      run: |
+        echo "::error::Project health score is below threshold (${{ inputs.fail-under }})"
+        exit 1

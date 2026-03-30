@@ -1,0 +1,56 @@
+# Project Health — GitHub Actions Workflow
+#
+# Runs on every PR and push to main.
+# Uses the local action from .github/actions/project-health/
+#
+# To use the marketplace version instead:
+#   uses: project-health/project-health-action@v1
+
+name: "Project Health"
+
+on:
+  pull_request:
+    branches: [main, master, develop]
+  push:
+    branches: [main, master]
+
+permissions:
+  contents: read
+  pull-requests: write
+  checks: write
+  statuses: write
+
+jobs:
+  health-scan:
+    name: Health Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Project Health Scan
+        id: health
+        uses: ./.github/actions/project-health
+        with:
+          fail-under: "60"
+          format: "json"
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          comment-update: "true"
+          upload-sarif: "false"
+
+      # Optional: Use the score in subsequent steps
+      - name: Log results
+        run: |
+          echo "Score: ${{ steps.health.outputs.score }}"
+          echo "Status: ${{ steps.health.outputs.status }}"
+          echo "Findings: ${{ steps.health.outputs.findings-count }}"
+
+      # Optional: Upload report as artifact
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: health-report
+          path: ${{ steps.health.outputs.report-path }}
+          retention-days: 30
