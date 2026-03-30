@@ -9,7 +9,7 @@
     "readme.md"
   ],
   "bin": {
-    "ph": "./bin/ph.js"
+    "project-health": "bin/ph.js"
   },
   "type": "module",
   "engines": {
