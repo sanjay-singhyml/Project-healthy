@@ -1,4 +1,5 @@
 import OpenAI from "openai";
+import type { ClientOptions } from "openai";
 
 export const MODEL = process.env.MEGALLM_MODEL || "claude-sonnet-4-6";
 export const BASE_URL =
@@ -10,7 +11,7 @@ export const MAX_TOKENS = parseInt(
 export const TEMPERATURE = parseFloat(process.env.MEGALLM_TEMPERATURE || "0.7");
 const TIMEOUT_MS = parseInt(process.env.MEGALLM_TIMEOUT || "120000", 10);
 
-export function createAIClient(apiKey: string): OpenAI {
+export function createAIClient(apiKey: string): InstanceType<typeof OpenAI> {
   return new OpenAI({
     apiKey,
     baseURL: BASE_URL,
