@@ -1,25 +1,20 @@
-import OpenAI from 'openai';
-import { config } from 'dotenv';
+import OpenAI from "openai";
 
-config({ path: ['.env.local', '.env'] });
+export const MODEL = process.env.MEGALLM_MODEL || "claude-sonnet-4-6";
+export const BASE_URL =
+  process.env.MEGALLM_BASE_URL || "https://ai.megallm.io/v1";
+export const MAX_TOKENS = parseInt(
+  process.env.MEGALLM_MAX_TOKENS || "60000",
+  10,
+);
+export const TEMPERATURE = parseFloat(process.env.MEGALLM_TEMPERATURE || "0.7");
+const TIMEOUT_MS = parseInt(process.env.MEGALLM_TIMEOUT || "120000", 10);
 
-// Get model from environment
-export const MODEL = process.env.MEGALLM_MODEL || 'openai-gpt-oss-20b';
-
-// Base URL for MegaLLM
-export const BASE_URL = process.env.MEGALLM_BASE_URL || 'https://ai.megallm.io/v1';
-
-// Timeout configuration
-const TIMEOUT_MS = parseInt(process.env.MEGALLM_TIMEOUT || '60000', 10);
-
-export const MAX_TOKENS = parseInt(process.env.MEGALLM_MAX_TOKENS || '60000', 10);
-
-// Create AI client instance specifically for the proxy utilizing a real API key
-export const createAIClient = (apiKey: string): OpenAI => {
+export function createAIClient(apiKey: string): OpenAI {
   return new OpenAI({
     apiKey,
     baseURL: BASE_URL,
     timeout: TIMEOUT_MS,
-    maxRetries: 2,
+    maxRetries: 3,
   });
-};
+}

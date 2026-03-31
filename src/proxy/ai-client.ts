@@ -15,17 +15,17 @@ import { config } from "dotenv";
 config();
 
 // Read the model from the environment first, then fall back to the documented default.
-export const MODEL =
-  process.env.MEGALLM_MODEL?.trim() || "claude-sonnet-4-6";
+export const MODEL = process.env.MEGALLM_MODEL?.trim() || "claude-sonnet-4-6";
 
-// Base URL for MegaLLM (RULES.md rule 9)
-// Default to hosted backend for zero-config UX
+// Base URL for MegaLLM — defaults to hosted backend for zero-config UX
 export const BASE_URL =
-  process.env.MEGALLM_BASE_URL || "https://ai.megallm.io/v1";
+  process.env.PROJECT_HEALTH_BACKEND_URL ||
+  process.env.MEGALLM_BASE_URL ||
+  "http://localhost:3000/v1";
 
 // Hosted backend URL for zero-config usage
 export const HOSTED_BACKEND_URL =
-  process.env.PROJECT_HEALTH_BACKEND_URL || "https://api.projecthealth.io/v1";
+  process.env.PROJECT_HEALTH_BACKEND_URL || "http://localhost:3000/v1";
 
 // Timeout configuration
 const TIMEOUT_MS = parseInt(process.env.MEGALLM_TIMEOUT || "60000", 10);
@@ -40,26 +40,13 @@ export const MAX_TOKENS = parseInt(
 const TEMPERATURE = parseFloat(process.env.MEGALLM_TEMPERATURE || "0.7");
 
 // Create AI client instance
-// Supports both direct MegaLLM API and hosted backend proxy
-export const createAIClient = (baseUrlOrApiKey: string): OpenAI => {
-  // If it looks like a URL, use it as baseURL with the real API key from env
-  // The hosted backend will handle authentication via JWT
-  if (
-    baseUrlOrApiKey.startsWith("http://") ||
-    baseUrlOrApiKey.startsWith("https://")
-  ) {
-    return new OpenAI({
-      apiKey: process.env.MEGALLM_API_KEY || "ph-hosted-backend",
-      baseURL: baseUrlOrApiKey,
-      timeout: TIMEOUT_MS,
-      maxRetries: 2,
-    });
-  }
+// Always uses the hosted backend — no API key required
+export const createAIClient = (baseUrl?: string): OpenAI => {
+  const baseURL = baseUrl || BASE_URL;
 
-  // Otherwise, treat as API key for direct MegaLLM access (self-hosted proxy)
   return new OpenAI({
-    apiKey: baseUrlOrApiKey,
-    baseURL: BASE_URL,
+    apiKey: "ph-no-auth-required",
+    baseURL,
     timeout: TIMEOUT_MS,
     maxRetries: 2,
   });
@@ -69,19 +56,6 @@ export const createAIClient = (baseUrlOrApiKey: string): OpenAI => {
 export const createHostedClient = (): OpenAI => {
   return createAIClient(HOSTED_BACKEND_URL);
 };
-
-// Default client for proxy (has API key)
-let defaultClient: OpenAI | null = null;
-
-export function getDefaultClient(): OpenAI | null {
-  if (!defaultClient) {
-    const apiKey = process.env.MEGALLM_API_KEY;
-    if (apiKey) {
-      defaultClient = createAIClient(apiKey);
-    }
-  }
-  return defaultClient;
-}
 
 // Streaming chat completion
 export async function* streamChat(

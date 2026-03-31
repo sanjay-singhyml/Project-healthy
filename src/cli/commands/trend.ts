@@ -3,6 +3,7 @@ import chalk from "chalk";
 import { loadHistory, type HistoryEntry } from "../../history/index.js";
 import { printError, printInfo, printJson } from "../../utils/output.js";
 import { createLogger } from "../../utils/logger.js";
+import { shellExit } from "../shell-exit.js";
 import type { ModuleId } from "../../types/index.js";
 
 const log = createLogger("ph:cli");
@@ -318,7 +319,7 @@ export function registerTrendCommand(program: Command): void {
           renderSparkline(history, moduleId);
         } catch (error) {
           printError(error instanceof Error ? error.message : String(error));
-          process.exit(1);
+          shellExit(1);
         }
       },
     );

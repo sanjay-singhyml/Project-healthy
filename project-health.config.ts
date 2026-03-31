@@ -2,7 +2,7 @@ import { ProjectHealthConfig } from 'project-health';
 
 export const config: ProjectHealthConfig = {
   "proxy": {
-    "url": "http://localhost:3000",
+    "url": "http://localhost:3000/v1",
     "timeout": 30000
   },
   "modules": {
@@ -13,8 +13,8 @@ export const config: ProjectHealthConfig = {
     },
     "quality": {
       "enabled": true,
-      "complexityThreshold": 10,
-      "duplicateLineMin": 51
+      "complexityThreshold": 30,
+      "duplicateLineMin": 200
     },
     "docs": {
       "enabled": true,

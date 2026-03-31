@@ -1,5 +1,10 @@
 import { resolve } from "node:path";
-import { printInfo, printSuccess, printWarning } from "../../utils/output.js";
+import {
+  printInfo,
+  printSuccess,
+  printWarning,
+  createOperationSpinner,
+} from "../../utils/output.js";
 import {
   buildContextDocument,
   writeContextFile,
@@ -61,8 +66,13 @@ export async function runContextCommand(
     return;
   }
 
-  printInfo("Packing repository context...");
+  const contextSpinner = createOperationSpinner(
+    "context",
+    "Packing repository context...",
+  );
+  contextSpinner.start();
   const result = await writeContextFile(projectRoot, contextOptions);
+  contextSpinner.succeed("Repository context packed");
 
   if (result.outputFiles.length === 1) {
     printSuccess(`Context file written to ${result.outputFiles[0]}`);

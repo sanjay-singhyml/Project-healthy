@@ -33,12 +33,6 @@ import {
   modules,
 } from "../modules/index.js";
 import {
-  authLogin,
-  authLogout,
-  authStatus,
-  getAuthToken,
-} from "../auth/index.js";
-import {
   printHealthReport,
   printJson,
   printHtml,
@@ -49,9 +43,24 @@ import {
   ExitCode,
   generateHtmlReport,
   createSpinner,
+  createOperationSpinner,
+  ParallelProgress,
   renderInit,
   printModuleResult as printModuleResultFn,
+  renderReviewHeader,
+  renderReviewText,
+  renderReviewFooter,
+  renderCiCheck,
+  renderBriefHeader,
+  renderBriefComplete,
+  renderAnalysisHeader,
+  renderAnalysisFooter,
+  createStreamFormatter,
+  THEME,
+  sectionDivider,
+  showBanner,
 } from "../utils/output.js";
+import { getModuleName } from "../modules/index.js";
 import { toSarif } from "../formatters/sarif.js";
 import { appendHistoryEntry } from "../history/index.js";
 import { buildRagAskMessages, buildRagContext } from "../proxy/rag.js";
@@ -90,7 +99,16 @@ import {
 
 const log = createLogger("ph:cli");
 
+// REPL-safe exit helpers — imported from shared module to avoid circular deps
+import { ShellExitError, setReplMode, shellExit } from "./shell-exit.js";
+export { ShellExitError, setReplMode, shellExit };
+
 const program = new Command();
+
+// Show modern banner on launch (only in interactive terminals)
+if (process.stdout.isTTY && !process.env.PH_NO_BANNER) {
+  showBanner();
+}
 
 // Get project root (current directory)
 function getProjectRoot(): string {
@@ -243,7 +261,7 @@ program
       await startShell(program);
     } catch (error) {
       printError(error instanceof Error ? error.message : String(error));
-      process.exit(ExitCode.FAIL_UNDER);
+      shellExit(ExitCode.FAIL_UNDER);
     }
   });
 
@@ -317,7 +335,7 @@ program
           printError(
             `Invalid project type: ${options.projectType}. Valid types: ${validTypes.join(", ")}`,
           );
-          process.exit(ExitCode.FAIL_UNDER);
+          shellExit(ExitCode.FAIL_UNDER);
         }
         projectType = options.projectType as ProjectType;
       } else {
@@ -347,7 +365,7 @@ program
       let results;
 
       if (options.module) {
-        // Run single module
+        // Run single module with spinner
         let moduleIdStr = options.module.toUpperCase();
 
         const friendlyMap: Record<string, ModuleId> = {
@@ -367,13 +385,69 @@ program
           printError(
             `Unknown module: ${options.module}. Use M-01 through M-08 or module names.`,
           );
-          process.exit(ExitCode.FAIL_UNDER);
+          shellExit(ExitCode.FAIL_UNDER);
         }
+        const moduleName = getModuleName(moduleId);
+        const spinner = createOperationSpinner(
+          "analyze",
+          `Running ${moduleName}...`,
+        );
+        spinner.start();
         const result = await runSingleModule(moduleId, config, modules);
+        spinner.succeed(
+          `${moduleName} completed — score ${result.score}/100 (${result.durationMs}ms)`,
+        );
         results = [result];
       } else {
-        // Run all modules in parallel via Promise.allSettled()
-        results = await runAllModules(config, modules);
+        // Run all modules in parallel with animated progress board
+        const allModuleIds = [
+          "M-01",
+          "M-02",
+          "M-03",
+          "M-04",
+          "M-05",
+          "M-06",
+          "M-07",
+          "M-08",
+        ] as ModuleId[];
+        const moduleList = allModuleIds.map((id) => ({
+          moduleId: id,
+          moduleName: getModuleName(id),
+        }));
+
+        const progress = new ParallelProgress(moduleList);
+        progress.start();
+
+        // Mark all as running immediately
+        for (const id of allModuleIds) {
+          progress.setRunning(id);
+        }
+
+        // Run each module individually to track progress
+        const runModuleWithProgress = async (moduleId: ModuleId) => {
+          const startMs = Date.now();
+          try {
+            const result = await runSingleModule(moduleId, config, modules);
+            progress.setDone(moduleId, result.score, result.durationMs);
+            return result;
+          } catch {
+            progress.setError(moduleId);
+            return {
+              moduleId,
+              moduleName: getModuleName(moduleId),
+              score: 0,
+              status: "error" as const,
+              findings: [],
+              metadata: {},
+              durationMs: Date.now() - startMs,
+            };
+          }
+        };
+
+        results = await Promise.all(
+          allModuleIds.map((id) => runModuleWithProgress(id)),
+        );
+        progress.finish();
       }
 
       // Create health report
@@ -414,7 +488,7 @@ program
         process.stderr.write(
           `\nHealth score ${report.score} is below threshold ${options.failUnder}\n`,
         );
-        process.exit(ExitCode.FAIL_UNDER);
+        shellExit(ExitCode.FAIL_UNDER);
       }
 
       // Handle watch mode
@@ -498,10 +572,10 @@ program
         return;
       }
 
-      process.exit(ExitCode.SUCCESS);
+      shellExit(ExitCode.SUCCESS);
     } catch (error) {
       printError(error instanceof Error ? error.message : String(error));
-      process.exit(ExitCode.FAIL_UNDER);
+      shellExit(ExitCode.FAIL_UNDER);
     }
   });
 
@@ -537,11 +611,17 @@ program
       const initialized = await checkCacheExists(projectRoot);
       if (!initialized) {
         printError('Project not initialized. Run "ph init" first.');
-        process.exit(ExitCode.FAIL_UNDER);
+        shellExit(ExitCode.FAIL_UNDER);
       }
 
       const selectedModules = parseCiCheckModules(options.modules);
       const config = await loadConfig(projectRoot);
+
+      const ciSpinner = createOperationSpinner(
+        "ci",
+        `Running CI check (${selectedModules.length} modules)...`,
+      );
+      ciSpinner.start();
 
       const runPromise = (async () => {
         const results = await Promise.all(
@@ -566,20 +646,22 @@ program
         clearTimeout(timeoutHandle);
       }
 
+      ciSpinner.succeed(`CI check complete — score ${report.score}/100`);
+
       if (options.format === "json") {
         printJson(buildCiCheckJson(report, options.failUnder));
       } else if (options.format === "text") {
-        console.log(renderCiCheckText(report));
+        renderCiCheck(report, options.failUnder);
       } else {
         printError(`Unsupported format: ${options.format}. Use json or text.`);
-        process.exit(ExitCode.FAIL_UNDER);
+        shellExit(ExitCode.FAIL_UNDER);
       }
 
       if (report.score < options.failUnder) {
-        process.exit(ExitCode.FAIL_UNDER);
+        shellExit(ExitCode.FAIL_UNDER);
       }
 
-      process.exit(ExitCode.SUCCESS);
+      shellExit(ExitCode.SUCCESS);
     } catch (error) {
       if (timeoutHandle) {
         clearTimeout(timeoutHandle);
@@ -587,11 +669,11 @@ program
 
       if (error instanceof Error && error.message === timeoutMessage) {
         printError(error.message);
-        process.exit(2);
+        shellExit(2);
       }
 
       printError(error instanceof Error ? error.message : String(error));
-      process.exit(ExitCode.FAIL_UNDER);
+      shellExit(ExitCode.FAIL_UNDER);
     }
   });
 
@@ -604,17 +686,25 @@ program
       const projectRoot = getProjectRoot();
       const cache = createCacheManager(projectRoot);
 
+      const scoreSpinner = createOperationSpinner(
+        "score",
+        "Reading cached score...",
+      );
+      scoreSpinner.start();
+
       const lastScan = await cache.getLastScan();
 
       if (!lastScan) {
+        scoreSpinner.fail("No cached score");
         printError('No previous scan found. Run "ph scan" first.');
-        process.exit(ExitCode.FAIL_UNDER);
+        shellExit(ExitCode.FAIL_UNDER);
       }
 
+      scoreSpinner.succeed(`Health score: ${lastScan.score}/100`);
       printJson({ score: lastScan.score, generatedAt: lastScan.generatedAt });
     } catch (error) {
       printError(error instanceof Error ? error.message : String(error));
-      process.exit(ExitCode.FAIL_UNDER);
+      shellExit(ExitCode.FAIL_UNDER);
     }
   });
 
@@ -633,7 +723,10 @@ async function runChat(opts: {
 
   // Resolve AI client
   const baseUrl =
-    opts.proxy || process.env.MEGALLM_BASE_URL || "https://ai.megallm.io/v1";
+    opts.proxy ||
+    process.env.PROJECT_HEALTH_BACKEND_URL ||
+    process.env.MEGALLM_BASE_URL ||
+    "http://localhost:3000/v1";
   const client = createAIClient(baseUrl);
 
   // Check if RAG cache is available
@@ -695,7 +788,7 @@ async function runChat(opts: {
         printError(
           "Missing .ph-cache/ast-index.json or .ph-cache/last-scan.json. Run `ph scan` first.",
         );
-        process.exit(ExitCode.FAIL_UNDER);
+        shellExit(ExitCode.FAIL_UNDER);
       }
       const { prompt: ragPrompt } = await buildRagContext(
         projectRoot,
@@ -743,15 +836,26 @@ async function runChat(opts: {
   );
 
   // Create readline interface
+  // Use a no-op output stream to prevent double-echo on Windows/PowerShell.
+  // The terminal already echoes typed characters; readline's output write
+  // causes a second copy of every character to appear.
   const readline = await import("readline");
+  const { Writable } = await import("node:stream");
+  const noopOutput = new Writable({
+    write(_chunk, _encoding, cb) {
+      cb();
+    },
+  });
   const rl = readline.createInterface({
     input: process.stdin,
-    output: process.stdout,
+    output: noopOutput,
+    terminal: false,
   });
 
   const askQuestion = (): Promise<void> => {
     return new Promise((resolve) => {
-      rl.question("> ", async (userInput) => {
+      process.stdout.write("> ");
+      rl.question("", async (userInput) => {
         if (!userInput.trim() || userInput.toLowerCase() === "exit") {
           // Save session on exit
           const sessionId = Date.now().toString();
@@ -919,7 +1023,7 @@ program
         const githubToken = process.env.GITHUB_TOKEN;
         if (!githubToken) {
           printError("GITHUB_TOKEN required for --pr option");
-          process.exit(1);
+          shellExit(1);
         }
 
         const { Octokit } = await import("@octokit/rest");
@@ -930,14 +1034,14 @@ program
         const originRemote = remotes.find((r) => r.name === "origin");
         if (!originRemote?.refs.fetch) {
           printError("Could not determine GitHub remote");
-          process.exit(1);
+          shellExit(1);
         }
 
         const remoteUrl = originRemote.refs.fetch;
         const match = remoteUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
         if (!match) {
           printError("Could not parse GitHub owner/repo from remote");
-          process.exit(1);
+          shellExit(1);
         }
         const owner = match[1];
         const repo = match[2].replace(/\.git$/, "");
@@ -986,7 +1090,11 @@ program
         return;
       }
 
-      printInfo("Analyzing code changes...");
+      const reviewSpinner = createOperationSpinner(
+        "review",
+        "Analyzing code changes...",
+      );
+      reviewSpinner.start();
 
       // Build messages with diff and coverage
       const truncatedDiff = truncateForContext(diff, 50000);
@@ -996,30 +1104,57 @@ program
         coverage.length > 0 ? coverage : undefined,
       );
 
-      // Use OpenAI client directly (proxy URL or MegaLLM)
+      // Use OpenAI client directly (hosted backend)
       const baseUrl =
         options.proxy ||
+        process.env.PROJECT_HEALTH_BACKEND_URL ||
         process.env.MEGALLM_BASE_URL ||
-        "https://ai.megallm.io/v1";
+        "http://localhost:3000/v1";
       const client = createAIClient(baseUrl);
 
-      console.log("\n=== AI Code Review ===\n");
+      reviewSpinner.succeed("Code analysis complete");
 
+      // Render structured review header
+      renderReviewHeader(
+        {
+          totalFindings: 0,
+          critical: 0,
+          high: 0,
+          medium: 0,
+          low: 0,
+          info: 0,
+          verdict: "comment",
+          filesReviewed: prNumber
+            ? 0
+            : (await simpleGit(projectRoot).diff(["--stat"]))
+                .split("\n")
+                .filter((l) => l.trim()).length,
+          linesChanged: { added: 0, removed: 0 },
+        },
+        {
+          branch: (await simpleGit(projectRoot).branchLocal()).current,
+          prNumber: prNumber,
+        },
+      );
+
+      // Stream formatted review output
+      const formatter = createStreamFormatter();
       let findingBuffer = "";
       for await (const chunk of streamChat(client, messages)) {
-        process.stdout.write(chunk);
+        formatter.write(chunk);
         findingBuffer += chunk;
       }
+      formatter.flush();
 
-      console.log("\n");
       reviewBody = findingBuffer;
+      renderReviewFooter();
 
       // Post to GitHub if requested
       if (options.post && prNumber) {
         const githubToken = process.env.GITHUB_TOKEN;
         if (!githubToken) {
           printError("GITHUB_TOKEN required for --post option");
-          process.exit(1);
+          shellExit(1);
         }
 
         const { Octokit } = await import("@octokit/rest");
@@ -1029,14 +1164,14 @@ program
         const originRemote = remotes.find((r) => r.name === "origin");
         if (!originRemote?.refs.fetch) {
           printError("Could not determine GitHub remote");
-          process.exit(1);
+          shellExit(1);
         }
 
         const remoteUrl = originRemote.refs.fetch;
         const match = remoteUrl.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
         if (!match) {
           printError("Could not parse GitHub owner/repo from remote");
-          process.exit(1);
+          shellExit(1);
         }
         const owner = match[1];
         const repo = match[2].replace(/\.git$/, "");
@@ -1054,7 +1189,7 @@ program
       printError(
         `Review failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      process.exit(1);
+      shellExit(1);
     }
   });
 
@@ -1070,7 +1205,11 @@ program
       const projectRoot = getProjectRoot();
       const git = simpleGit(projectRoot);
 
-      printInfo("Building file tree...");
+      const briefSpinner = createOperationSpinner(
+        "brief",
+        "Building file tree...",
+      );
+      briefSpinner.start();
 
       // Build file tree (3 levels deep) using shared ignore list
       function buildFileTree(
@@ -1117,6 +1256,7 @@ program
       }
 
       const fileTree = buildFileTree(projectRoot);
+      briefSpinner.succeed("File tree built");
 
       // Detect entry points from package.json
       let entryPoints: string[] = [];
@@ -1157,7 +1297,7 @@ program
         }
       }
 
-      printInfo("Analyzing git ownership...");
+      briefSpinner.start("Analyzing git ownership...");
 
       // Get git shortlog for ownership — timeout after 5s to avoid hanging on Windows
       let gitShortlog = "";
@@ -1179,7 +1319,8 @@ program
         );
       }
 
-      printInfo("Calculating complexity...");
+      briefSpinner.succeed("Git ownership analyzed");
+      briefSpinner.start("Calculating complexity...");
 
       // Get complexity data (using fallback regex approach)
       const complexity: Array<{ file: string; complexity: number }> = [];
@@ -1237,7 +1378,8 @@ program
       complexity.sort((a, b) => b.complexity - a.complexity);
       const topComplexity = complexity.slice(0, 10);
 
-      printInfo("Generating ONBOARDING.md with AI...");
+      briefSpinner.succeed("Complexity calculated");
+      briefSpinner.start("Generating ONBOARDING.md with AI...");
 
       // Build messages
       const { buildBriefMessages } = await import("../proxy/ai-client.js");
@@ -1249,28 +1391,31 @@ program
         gitShortlog,
       );
 
-      console.log("\n=== Generating ONBOARDING.md ===\n");
+      briefSpinner.succeed("AI content ready");
 
-      // Use OpenAI client directly (proxy URL or MegaLLM)
+      const outputPath = resolve(projectRoot, options.output);
+      renderBriefHeader(outputPath);
+
+      // Use OpenAI client directly (hosted backend)
       const baseUrl =
         options.proxy ||
+        process.env.PROJECT_HEALTH_BACKEND_URL ||
         process.env.MEGALLM_BASE_URL ||
-        "https://ai.megallm.io/v1";
+        "http://localhost:3000/v1";
       const client = createAIClient(baseUrl);
 
+      const formatter = createStreamFormatter();
       let content = "";
       for await (const chunk of streamChat(client, messages)) {
-        process.stdout.write(chunk);
+        formatter.write(chunk);
         content += chunk;
       }
-
-      console.log("\n");
+      formatter.flush();
 
       // Write ONBOARDING.md
-      const outputPath = resolve(projectRoot, options.output);
       writeFileSync(outputPath, content, "utf-8");
 
-      printSuccess(`ONBOARDING.md written to ${outputPath}`);
+      renderBriefComplete(outputPath, content.split(/\s+/).length);
 
       // If --update flag, set up git hook for future runs
       if (options.update) {
@@ -1297,7 +1442,7 @@ fi
       printError(
         `Brief generation failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      process.exit(1);
+      shellExit(1);
     }
   });
 
@@ -1352,7 +1497,7 @@ program
       printError(
         `Context generation failed: ${error instanceof Error ? error.message : String(error)}`,
       );
-      process.exit(ExitCode.FAIL_UNDER);
+      shellExit(ExitCode.FAIL_UNDER);
     }
   });
 
@@ -1387,7 +1532,7 @@ const configCmd = program
       }
     } catch (error) {
       printError(error instanceof Error ? error.message : String(error));
-      process.exit(ExitCode.FAIL_UNDER);
+      shellExit(ExitCode.FAIL_UNDER);
     }
   });
 
@@ -1402,67 +1547,7 @@ configCmd
       await runConfigWizard();
     } catch (error) {
       printError(error instanceof Error ? error.message : String(error));
-      process.exit(ExitCode.FAIL_UNDER);
-    }
-  });
-
-// ph auth command
-const authCmd = program
-  .command("auth")
-  .description("Authentication management");
-
-authCmd
-  .command("login [token]")
-  .description("Login with JWT token (stores in OS keychain via keytar)")
-  .option("-t, --token <token>", "JWT token to store")
-  .action(async (token, options) => {
-    try {
-      const jwtToken = token || options.token;
-      if (!jwtToken) {
-        printError(
-          'JWT token required. Use "ph auth login <token>" or "ph auth login -t <token>"',
-        );
-        process.exit(ExitCode.FAIL_UNDER);
-      }
-
-      await authLogin(jwtToken);
-      printSuccess("JWT stored in OS keychain");
-      printInfo('Run "ph auth status" to verify');
-    } catch (error) {
-      printError(error instanceof Error ? error.message : String(error));
-      process.exit(ExitCode.FAIL_UNDER);
-    }
-  });
-
-authCmd
-  .command("logout")
-  .description("Logout and remove JWT from OS keychain")
-  .action(async () => {
-    try {
-      await authLogout();
-      printSuccess("JWT removed from OS keychain");
-    } catch (error) {
-      printError(error instanceof Error ? error.message : String(error));
-      process.exit(ExitCode.FAIL_UNDER);
-    }
-  });
-
-authCmd
-  .command("status")
-  .description("Check authentication status")
-  .action(async () => {
-    try {
-      const status = await authStatus();
-      if (status.loggedIn) {
-        printSuccess(`Authenticated: ${status.tokenPreview}`);
-      } else {
-        printWarning(
-          'Not authenticated. Run "ph auth login <token>" to enable AI features.',
-        );
-      }
-    } catch (error) {
-      printError(error instanceof Error ? error.message : String(error));
-      process.exit(ExitCode.FAIL_UNDER);
+      shellExit(ExitCode.FAIL_UNDER);
     }
   });
 
@@ -1478,12 +1563,20 @@ program
   .option("-f, --format <format>", "Output format: json or text", "text")
   .action(async (options) => {
     try {
-      printInfo(`Comparing against ${options.base}...`);
+      const diffSpinner = createOperationSpinner(
+        "diff",
+        `Comparing against ${options.base}...`,
+      );
+      diffSpinner.start();
 
       const result = await runDiffCommand({
         base: options.base,
         format: options.format,
       });
+
+      diffSpinner.succeed(
+        `Diff complete — ${result.changedFiles.length} files changed`,
+      );
 
       if (options.format === "json") {
         // Output JSON
@@ -1498,38 +1591,87 @@ program
         };
         console.log(JSON.stringify(output, null, 2));
       } else {
-        // Text output
-        console.log(result.summary);
+        // Structured text output using analysis renderer
+        const scoreDeltaStr =
+          result.scoreDelta > 0
+            ? `+${result.scoreDelta}`
+            : String(result.scoreDelta);
+        const impactColor =
+          result.impactScore > 0.5
+            ? THEME.critical
+            : result.impactScore > 0.2
+              ? THEME.warning
+              : THEME.success;
 
-        // Show new findings inline
+        renderAnalysisHeader(
+          "DIFF ANALYSIS",
+          `Comparing against ${chalk.hex(THEME.accent)(result.baseBranch)}`,
+          {
+            "Files changed": String(result.changedFiles.length),
+            "Modules invoked": result.modulesInvoked.join(", ") || "none",
+            "Score delta": scoreDeltaStr,
+            Impact: `${(result.impactScore * 100).toFixed(0)}%`,
+          },
+        );
+
+        // Show new findings inline with structured rendering
         if (result.newFindings.length > 0) {
-          console.log("\nNew findings in changed files:");
+          sectionDivider(`new findings (${result.newFindings.length})`);
+          process.stdout.write("\n");
           for (const f of result.newFindings.slice(0, 15)) {
             const sev =
               f.severity === "CRITICAL"
-                ? chalk.red(`[${f.severity}]`)
+                ? chalk.hex(THEME.critical)(`[${f.severity}]`)
                 : f.severity === "HIGH"
-                  ? chalk.yellow(`[${f.severity}]`)
-                  : chalk.gray(`[${f.severity}]`);
-            const loc = f.file ? ` ${f.file}${f.line ? ":" + f.line : ""}` : "";
-            console.log(`  ${sev} ${f.type}${chalk.gray(loc)}`);
-            console.log(`         ${f.message}`);
-          }
-          if (result.newFindings.length > 15) {
-            console.log(
-              chalk.gray(`  ... and ${result.newFindings.length - 15} more`),
+                  ? chalk.hex(THEME.warning)(`[${f.severity}]`)
+                  : chalk.dim(`[${f.severity}]`);
+            const loc = f.file
+              ? ` ${chalk.hex(THEME.info)(f.file)}${f.line ? chalk.dim(":" + f.line) : ""}`
+              : "";
+            process.stdout.write(
+              `  ${sev} ${chalk.hex(THEME.text)(f.type)}${chalk.dim(loc)}\n`,
+            );
+            process.stdout.write(
+              `         ${chalk.hex(THEME.text)(f.message)}\n`,
             );
           }
+          if (result.newFindings.length > 15) {
+            process.stdout.write(
+              chalk.dim(`  ... and ${result.newFindings.length - 15} more\n`),
+            );
+          }
+        }
+
+        if (result.resolvedFindings.length > 0) {
+          sectionDivider(`resolved (${result.resolvedFindings.length})`);
+          process.stdout.write("\n");
+          for (const f of result.resolvedFindings.slice(0, 5)) {
+            process.stdout.write(
+              `  ${chalk.hex(THEME.success)("✓")} ${chalk.dim(f.type)} ${chalk.dim(f.message)}\n`,
+            );
+          }
+        }
+
+        if (result.impactScore > 0.5) {
+          renderAnalysisFooter(
+            "⚠ This change degrades project health significantly",
+          );
+        } else if (result.impactScore > 0.2) {
+          renderAnalysisFooter(
+            "⚡ Moderate health impact — review findings above",
+          );
+        } else {
+          renderAnalysisFooter("✓ Low impact");
         }
       }
 
       // Exit code 1 if impact > 50%
       if (result.impactScore > 0.5) {
-        process.exit(ExitCode.FAIL_UNDER);
+        shellExit(ExitCode.FAIL_UNDER);
       }
     } catch (error) {
       printError(error instanceof Error ? error.message : String(error));
-      process.exit(ExitCode.FAIL_UNDER);
+      shellExit(ExitCode.FAIL_UNDER);
     }
   });
 
@@ -1570,7 +1712,7 @@ program
       await runExplore(projectRoot, { port: parseInt(options.port) });
     } catch (error) {
       printError(error instanceof Error ? error.message : String(error));
-      process.exit(1);
+      shellExit(1);
     }
   });
 

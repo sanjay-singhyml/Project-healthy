@@ -131,6 +131,7 @@ export async function runExplore(
 
   const server = app.listen(port, () => {
     console.log(`\n  ph explore --- http://localhost:${port}\n`);
+    console.log("  Press 'q' + Enter or Ctrl+C to stop the server.\n");
   });
 
   // Auto-open browser (best-effort)
@@ -139,6 +140,20 @@ export async function runExplore(
     await open.default(`http://localhost:${port}`);
   } catch {
     console.log(`Open your browser to: http://localhost:${port}`);
+  }
+
+  // Listen for 'q' on stdin to shut down
+  if (process.stdin.isTTY) {
+    process.stdin.setRawMode(false);
+    process.stdin.resume();
+    process.stdin.setEncoding("utf-8");
+    process.stdin.on("data", (key: string) => {
+      if (key.trim().toLowerCase() === "q") {
+        console.log("\nShutting down ph explore...");
+        server.close();
+        process.exit(0);
+      }
+    });
   }
 
   // Clean shutdown

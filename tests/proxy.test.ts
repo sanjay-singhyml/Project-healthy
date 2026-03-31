@@ -1,44 +1,5 @@
 // Test suite for Proxy Server
 import { describe, it, expect } from "vitest";
-import jwt from "jsonwebtoken";
-
-const JWT_SECRET = "test-secret-key-for-unit-tests";
-
-describe("Proxy Server: JWT Validation", () => {
-  it("creates and verifies valid JWT", () => {
-    const token = jwt.sign({ userId: "test-user", plan: "free" }, JWT_SECRET, {
-      expiresIn: "1h",
-    });
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    expect(decoded.userId).toBe("test-user");
-    expect(decoded.plan).toBe("free");
-  });
-
-  it("rejects expired JWT", () => {
-    const token = jwt.sign({ userId: "test" }, JWT_SECRET, {
-      expiresIn: "-1s",
-    });
-    expect(() => jwt.verify(token, JWT_SECRET)).toThrow();
-  });
-
-  it("rejects JWT with wrong secret", () => {
-    const token = jwt.sign({ userId: "test" }, "wrong-secret");
-    expect(() => jwt.verify(token, JWT_SECRET)).toThrow();
-  });
-
-  it("rejects malformed JWT", () => {
-    expect(() => jwt.verify("not-a-jwt", JWT_SECRET)).toThrow();
-  });
-
-  it("includes correct claims in token", () => {
-    const claims = { userId: "u123", plan: "team", rateLimit: 60 };
-    const token = jwt.sign(claims, JWT_SECRET, { expiresIn: "24h" });
-    const decoded = jwt.verify(token, JWT_SECRET) as any;
-    expect(decoded.userId).toBe("u123");
-    expect(decoded.plan).toBe("team");
-    expect(decoded.rateLimit).toBe(60);
-  });
-});
 
 describe("Proxy Server: Rate Limiting Logic", () => {
   it("rate limit window is 60 seconds", () => {

@@ -22,8 +22,8 @@ const defaultModulesConfig: ModulesConfig = {
   },
   quality: {
     enabled: true,
-    complexityThreshold: 10,
-    duplicateLineMin: 51,
+    complexityThreshold: 30,
+    duplicateLineMin: 200,
   },
   docs: {
     enabled: true,
@@ -66,7 +66,7 @@ const defaultModulesConfig: ModulesConfig = {
 
 const defaultConfig: ProjectHealthConfig = {
   proxy: {
-    url: "https://api.projecthealth.io/v1",
+    url: "http://localhost:3000/v1",
     timeout: 30000,
   },
   modules: defaultModulesConfig,

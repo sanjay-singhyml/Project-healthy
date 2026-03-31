@@ -2,7 +2,7 @@
 
 **The unified CLI & IDE tool for deep codebase intelligence**
 
-`project-health` (ph) is an advanced, all-in-one CLI binary and IDE extension
+`project-healthy` (ph) is an advanced, all-in-one CLI binary and IDE extension
 designed to run deep, automated analyses on any software repository. It combines
 eight parallel analysis modules and an AI intelligence layer powered by
 **MegaLLM** to provide actionable insights, unified health scores, and
@@ -25,16 +25,15 @@ documentation updates.
 
 ## 🎯 Primary Goals
 
-- **Single Binary**: Fast, global installation (`npm install -g ph`).
+- **Single Binary**: Fast, global installation (`npm install -g project-healthy`).
 - **Parallel Analysis**: Eight distinct modules run concurrently (under 60s for
   typical projects).
 - **Unified Scoring**: 0–100 weighted health score with actionable insights.
-- **MegaLLM-powered AI**: High-quality LLM integrations routed through a secure
+- **MegaLLM-powered AI**: High-quality LLM integrations routed through a
   backend proxy (supporting Claude, GPT, Gemini, etc.).
 - **Zero-Code Model Swapping**: Switch LLM providers simply by updating the
   proxy's `.env` file.
-- **Secure Architecture**: API keys are isolated on the proxy server; the CLI
-  only uses temporary JWTs.
+- **Open Access**: No authentication required — download the CLI from npm and start using AI features immediately.
 - **IDE & CI/CD Support**: VS Code extension included, alongside CI pipeline
   integration (e.g., block merges if score drops below a threshold).
 
@@ -61,10 +60,10 @@ support AI grounding and temporal state checks:
 
 ### 3. AI Proxy Architecture
 
-AI calls are brokered via a developer-operated backend proxy ensuring high
-security. The user's CLI authenticates via JWT, while the Proxy interacts with
-the MegaLLM API using secured keys. No third-party LLM API keys run on the
-developer's local machine.
+AI calls are brokered via a developer-operated backend microservice. The proxy
+interacts with the MegaLLM API using secured keys on the server side. No
+third-party LLM API keys run on the developer's local machine. The CLI connects
+directly to the hosted backend with no authentication required.
 
 ---
 
@@ -99,22 +98,18 @@ All features are invoked securely through the proxy and maintain grounded
 context via the local `.ph-cache/`.
 
 1. **`ph ask` (Natural Language Interrogation)** Ask plain-English questions
-   about the codebase. Replaces generic advice with specific `file:line`
-   citations.
+   about the codebase. Replaces generic advice with specific `file:line` citations.
 2. **`ph review` (PR Review Co-pilot)** Senior-level review of a branch or PR.
    Highlights bugs, security gaps, untested paths, and complexity spikes based
    on actual test coverage.
 3. **`ph brief` (Onboarding Briefing Generator)** Automatically creates an
-   `ONBOARDING.md` containing architecture summaries, ownership maps, entry
-   points, and known debt areas.
-4. **`ph chat` (Conversational Codebase REPL)** A persistent terminal chat
-   session. Your latest scan is injected as context, turning the AI into a
-   project-aware pairing partner.
+   `ONBOARDING.md` containing architecture summaries, ownership maps, entry points, etc.
+4. **`ph chat` (Conversational Codebase REPL)** A persistent terminal chat session.
 5. **`ph fix` (Self-Healing Codebase Engine)** Automatically remediate findings
-   from your last scan. Supports command-based fixes (CVE upgrades, eslint
-   `--fix`, `.env` sync, tsconfig incremental) and AI-powered fixes (JSDoc,
-   complexity refactoring, dead exports, stale docs). Modes: `--auto`,
-   `--interactive`, `--dry-run`, `--ai`.
+   from your last scan using MegaLLM patch generation. It triages, fixes, and
+   validates findings, supporting auto-generated fixes (complexity refactoring,
+   dead exports, secret leaks, etc.).
+   Modes: `--auto` (fully automated fix loop), `--interactive`, `--dry-run`, `--ai`.
 6. **Git Hook (Commit Doc Updater)** A surgical `post-commit` hook that
    automatically amends (or opens a PR to update) documentation sections that
    reference code you just changed.
@@ -136,33 +131,34 @@ context via the local `.ph-cache/`.
 
 ## 🚀 Getting Started
 
-### Zero-Config Setup (Recommended)
+### Hosted NPM Installation (Recommended)
 
-**No API keys or configuration needed!** Just install and start using:
+**No API keys or complex configuration needed!** Just install from NPM and start using:
 
 ```bash
-# Install globally
-npm install -g project-health
+# Install the package globally
+npm install -g project-healthy
 
 # Navigate to your project
 cd your-project-folder
 
-# Initialize and run your first scan
+# Jump into the interactive CLI shell
 ph init
-ph scan
 ```
 
-That's it! The CLI automatically uses our hosted backend for AI features.
+The CLI automatically uses our hosted backend for AI features out of the box.
 
-### 1. Initialization
+### 1. Initialization / Interactive Shell
 
 ```bash
 cd your-project-folder
 ph init
 ```
 
-Generates the `.ph-cache/` context folder, builds your
-`project-health.config.ts`, and installs the smart git hooks.
+`ph init` acts as your interactive CLI shell! It activates an interactive, continuous
+command loop. You can input commands straight from the prompt, remaining active until
+you press `Ctrl+C` or close the terminal. Additionally, it generates the `.ph-cache/`
+context folder, builds your `project-health.config.ts`, and installs the smart git hooks.
 
 ### 2. Running a Scan
 
@@ -172,79 +168,51 @@ ph scan --format terminal
 
 Runs the 8 parallel modules and logs the score to stdout. Use `--format html`
 for an interactive report, `--format sarif` for security tool integration, or
-`--fail-under 80` in CI/CD pipelines. Use `--project-type library|webapp|cli-tool|microservice|prototype` to apply type-specific weight presets.
+`--fail-under 80` in CI/CD pipelines.
 
-### 3. Interactive Repository Explorer
+### 3. Web Dashboard Integration
+
+```bash
+ph dashboard --port 8080
+```
+
+Launches a robust data integration Web Dashboard. We have implemented robust,
+null-safe parsing for overview pages. If you're building upon our Dashboard UI
+(e.g. Discharge Station Cards, Rain Gauge, Barrage Level), it includes
+responsive design updates via flexible wrapping utilities, ensuring metrics won't overlap.
+
+### 4. Interactive Repository Explorer
 
 ```bash
 ph explore
 ```
 
-Launches a local web UI at `http://localhost:7878` with:
+Launches a local web UI at `http://localhost:7878` with a file tree with activity heat maps,
+commit history for each file, click-to-expand diffs inline, and module health impact visualization.
 
-- **File tree** with activity heat map (red = recently changed, green = stable)
-- **Commit history** for each file with author avatars
-- **Click-to-expand diffs** inline
-- **Module health impact** visualization per file
-- **Search/filter** files in the sidebar
-
-Use `--port 8080` to customize the port.
-
-### 4. LLM-Ready Repository Context
+### 5. Self-Healing Auto-Fix Engine Pipeline
 
 ```bash
-ph context
-```
-
-Generates a repomix-style XML context file for the current repository. The
-output includes repository metadata, directory structure, git context, and
-file contents so an LLM can load the codebase in one artifact.
-
-Useful options:
-
-- `--output project-context.xml` to choose the destination file
-- `--no-file-contents` to emit metadata-only context
-- `--split-output 200000` to split very large outputs into numbered files
-- `--sort changes` to order files by git change frequency
-- `--header-file CONTEXT.md` to inject extra project instructions into the pack
-
-### 5. AI Features (Zero-Config)
-
-All AI features work out of the box with the hosted backend:
-
-```bash
-# Ask questions about your codebase
-ph ask "What are the main entry points?"
-
-# Get AI PR review
-ph review
-
-# Generate onboarding document
-ph brief
-
-# Interactive chat with codebase context
-ph chat
-```
-
-### 6. Self-Healing Auto-Fix
-
-```bash
-# Auto-fix all fixable findings
+# Auto-fix all fixable findings automatically (Full pipeline)
 ph fix --auto
 
 # Interactive selection of findings to fix
 ph fix --interactive
 
-# Preview fixes without applying
+# Preview AI-powered fix patches without applying
 ph fix --dry-run
-
-# Enable AI-powered fixes for complex issues
-ph fix --ai
 ```
 
-### 7. Additional Commands
+The auto-fix engine is fully capable of treating high-severity findings
+like secret leaks, complexity limits (e.g., M-02 code clones, sliding window threshold alerts),
+and large file technical debt out of the box using MegaLLM!
+
+### 6. Additional Commands
 
 ```bash
+# General AI assistance
+ph ask "What are the main entry points?"
+
 # Fast CI check with 30s timeout (exits 1 if below threshold)
 ph ci-check --fail-under 80
 
@@ -257,79 +225,99 @@ ph score
 # Historical score trend analysis
 ph trend
 
-# Web dashboard with live scores and auto-rescan
-ph dashboard --port 8080
+# AI Codebase Chat
+ph chat
 ```
-
-### 8. Self-Hosted Proxy (Optional)
-
-For enterprise users who want to use their own MegaLLM API key:
-
-```bash
-# Create .env file with your API key
-cp .env.example .env
-# Edit .env and set MEGALLM_API_KEY=your-api-key
-
-# Run your own proxy server
-npm run start:proxy
-
-# Configure CLI to use your proxy
-export PROJECT_HEALTH_BACKEND_URL=http://localhost:3000
-ph scan
-```
-
-### 9. Debug Logging
-
-```bash
-DEBUG=ph:* ph scan          # full trace output from all modules
-DEBUG=ph:cli ph scan        # CLI lifecycle only
-DEBUG=ph:security ph scan   # dependency security module only
-DEBUG=ph:quality ph scan    # code quality module only
-DEBUG=ph:flakiness ph scan  # test flakiness module only
-DEBUG=ph:cicd ph scan       # CI/CD pipeline module only
-DEBUG=ph:env ph scan        # environment integrity module only
-DEBUG=ph:buildperf ph scan  # build performance module only
-DEBUG=ph:cache ph scan      # cache operations only
-```
-
-Run `DEBUG=ph:* ph scan` for full trace output. All error paths in catch blocks
-are logged via the `debug` package under `ph:*` namespaces.
 
 ---
 
-## 📈 Deep Analysis & Strategy
+## 💻 Running the CLI Locally (From Source)
 
-The `project-health` tool represents a massive shift from fragmented repository
-analysis to unified intelligence.
+If you'd like to extend `project-health` or run the uncompiled source code yourself,
+you need to clone the repository and configure the required environment formats:
 
-**Strengths & Innovative Angles:**
+### Step 1. Clone & Build
 
-- **Holistic Insight**: Tools like Codecov, Snyk, or SonarCloud limit themselves
-  to coverage, security, or code quality respectively. `ph` acts as the
-  aggregate layer evaluating _team process_ (PR complexity, CI efficiency)
-  alongside _code metrics_ (security, flakiness).
-- **AI Grounding architecture**: Instead of feeding an LLM isolated code chunks,
-  `.ph-cache/` serves a distilled representation of _code health combined with
-  AST mappings_. This results in drastically reduced hallucinations and higher
-  relevancy (e.g., finding the precise `PaymentService.ts:142` loop).
-- **Enterprise Security First**: Bypassing direct API key usage on local
-  developer machines by implementing a JWT proxy architecture significantly
-  de-risks enterprise rollouts compared to other LLM coding tools.
-- **Continuous Documentation**: The surgical AI Git Hook (AI-05) fixes one of
-  the oldest developer problems: documentation rot. By isolating updates
-  strictly to the touched module references via AST extraction, it changes
-  documentation from a chore to an automated byproduct of coding.
+```bash
+git clone https://github.com/Sanjay-Shahyml/Project-health.git
+cd Project-health
+npm install
+npm run build
+```
 
-**Implementation Nuances to Watch:**
+_(Optional) Create a global link for the local binary:_
 
-- Executing 8 heavily distinct analytical processes (running tools like `execa`,
-  memory-heavy TypeScript AST parsing, and network-bound API pulls) concurrently
-  within a 60s hard timeout will require aggressive optimization and graceful
-  error degradation.
-- The MegaLLM abstraction provides invaluable flexibility to negotiate
-  hardware/cost constraints but necessitates robust fallback error handling
-  within the Proxy layer.
+```bash
+npm link
+# Now you can use 'project-health' globally calling your local build
+```
 
-By prioritizing speed, accurate AI grounding, and a seamless developer
-experience, `project-health` is positioned to be a foundational piece of any
-professional engineering team's stack.
+### Step 2. CLI Environment Variables (`.env`)
+
+You can supply optional tokens to extend CLI capabilities (e.g. GitHub/GitLab integrations)
+by creating a `.env` in the root of the standard repo.
+
+Copy the `.env.example` to `.env` in the root directory and configure as needed:
+
+```env
+# Point to your own locally running AI proxy
+PROJECT_HEALTH_BACKEND_URL="http://localhost:3000/v1"
+
+# Needed for CI/CD checks (M-01) and PR complexity (M-06)
+GITHUB_TOKEN=ghp_your_github_token_here
+GITLAB_TOKEN=glpat_your_gitlab_token_here
+
+# Needed for Snyk Dependency Security checks (M-05)
+SNYK_TOKEN=your_snyk_token_here
+```
+
+---
+
+## Standalone AI Proxy Microservice (`ai-proxy/`)
+
+For developers intending to utilize their own MegaLLM API keys, the proxy
+logic has been isolated into its own production-ready Node.js microservice
+(`ai-proxy/`). This proxy centralizes AI request handling, secures API keys
+preventing leaks to client devices, and manages API rate limits locally.
+No authentication is required — anyone can use the AI features.
+
+### Step 1: Proxy Configuration
+
+Navigate to the `ai-proxy` directory and setup environment variables:
+
+```bash
+cd ai-proxy
+cp .env.example .env.local
+```
+
+### Step 2: Edit `.env.local`
+
+Update `.env.local` to point to your AI provider variables, limits, and server settings:
+
+```env
+# AI Provider (MegaLLM API integration)
+MEGALLM_API_KEY=sk-your-megallm-api-key
+MEGALLM_BASE_URL=https://ai.megallm.io/v1
+MEGALLM_MODEL=claude-sonnet-4-6
+
+# Configuration
+MEGALLM_MAX_TOKENS=120000
+MEGALLM_TEMPERATURE=0.7
+
+# Proxy network
+PORT=3000
+RATE_LIMIT_RPM=60
+```
+
+### Step 3: Start the Microservice
+
+Start the decoupled proxy! Once deployed, it handles LLM interactions securely.
+
+```bash
+npm run start:proxy   # from the repo root
+# OR
+cd ai-proxy && npm start
+```
+
+Make sure your client configuring the CLI `PROJECT_HEALTH_BACKEND_URL` is pointing directly
+at this proxy URL (e.g., `http://localhost:3000/v1`).

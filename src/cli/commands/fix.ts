@@ -17,6 +17,7 @@ import {
   type FixStrategy,
 } from "../../fix/strategies.js";
 import { aiFixFinding, AI_FIXABLE_TYPES } from "../../fix/ai-fix.js";
+import { shellExit } from "../shell-exit.js";
 
 // ─── Severity ordering ─────────────────────────────────────────────
 const SEVERITY_ORDER: Record<string, number> = {
@@ -215,7 +216,7 @@ async function runFixCommand(opts: {
   const report = loadLastScan(projectRoot);
   if (!report) {
     console.error(chalk.red("\n✗ No scan data found. Run `ph scan` first.\n"));
-    process.exit(1);
+    shellExit(1);
   }
 
   // 2. Triage: sort by severity, filter to fixable only
@@ -406,7 +407,7 @@ export function registerFixCommand(program: Command): void {
       } catch (err) {
         if (err instanceof Error && err.name === "ExitPromptError") {
           console.log(chalk.yellow("\n  Cancelled.\n"));
-          process.exit(0);
+          shellExit(0);
         }
         throw err;
       }

@@ -5,15 +5,21 @@
 import chalk from "chalk";
 import * as readline from "readline";
 import type { Command } from "commander";
+import { setReplMode, ShellExitError } from "../shell-exit.js";
 
 // ─── Banner ─────────────────────────────────────────────────────────────────
 
+const ACCENT = "#b4befe";
+const TEXT = "#cdd6f4";
+const DIM = "#3d4466";
+const BORDER = "#1e2330";
+
 const BANNER = `
-${chalk.cyan("╔═══════════════════════════════════════════════════════════╗")}
-${chalk.cyan("║")}  ${chalk.bold.white("⚡  project-health")} ${chalk.dim.white("interactive shell")}                   ${chalk.cyan("║")}
-${chalk.cyan("║")}  ${chalk.dim("Type a command to run it. 'help' lists all commands.")}       ${chalk.cyan("║")}
-${chalk.cyan("║")}  ${chalk.dim("Press Ctrl+C or type 'exit' to quit.")}                       ${chalk.cyan("║")}
-${chalk.cyan("╚═══════════════════════════════════════════════════════════╝")}
+${chalk.hex(BORDER)("╭" + "─".repeat(55) + "╮")}
+${chalk.hex(BORDER)("│")}  ${chalk.hex(ACCENT).bold("project-health")} ${chalk.hex(TEXT).bold("interactive shell")}                   ${chalk.hex(BORDER)("│")}
+${chalk.hex(BORDER)("│")}  ${chalk.hex(DIM)("Type a command to run it. 'help' lists all commands.")}  ${chalk.hex(BORDER)("│")}
+${chalk.hex(BORDER)("│")}  ${chalk.hex(DIM)("Press Ctrl+C or type 'exit' to quit.")}                  ${chalk.hex(BORDER)("│")}
+${chalk.hex(BORDER)("╰" + "─".repeat(55) + "╯")}
 `;
 
 // ─── Command catalogue (name → short description) ───────────────────────────
@@ -36,7 +42,8 @@ const COMMANDS: Array<{ name: string; flags?: string; description: string }> = [
   {
     name: "diff",
     flags: "[-b base] [-f format]",
-    description: "Compare current branch against base and run changed-file modules",
+    description:
+      "Compare current branch against base and run changed-file modules",
   },
   {
     name: "chat",
@@ -82,11 +89,6 @@ const COMMANDS: Array<{ name: string; flags?: string; description: string }> = [
     description: "Manage project-health configuration",
   },
   {
-    name: "auth",
-    flags: "login|logout|status",
-    description: "Manage authentication (JWT keychain)",
-  },
-  {
     name: "help",
     description: "Show this command list",
   },
@@ -100,7 +102,7 @@ const COMMANDS: Array<{ name: string; flags?: string; description: string }> = [
 
 function printHelp(): void {
   console.log(
-    `\n${chalk.bold.cyan("Available commands")}  ${chalk.dim("(flags are optional)")}\n`
+    `\n${chalk.bold.cyan("Available commands")}  ${chalk.dim("(flags are optional)")}\n`,
   );
 
   const maxLen = Math.max(...COMMANDS.map((c) => c.name.length));
@@ -121,6 +123,9 @@ const PROMPT = chalk.cyan("ph") + chalk.dim(" ❯ ");
 // ─── Main shell loop ─────────────────────────────────────────────────────────
 
 export async function startShell(program: Command): Promise<void> {
+  // Enable REPL mode so commands throw instead of calling process.exit()
+  setReplMode(true);
+
   console.log(BANNER);
   printHelp();
 
@@ -133,12 +138,14 @@ export async function startShell(program: Command): Promise<void> {
 
   // Graceful Ctrl+C
   rl.on("SIGINT", () => {
+    setReplMode(false);
     console.log(chalk.dim("\n\nGoodbye 👋"));
     rl.close();
     process.exit(0);
   });
 
   rl.on("close", () => {
+    setReplMode(false);
     // stdin closed (terminal closed)
     process.exit(0);
   });
@@ -155,6 +162,7 @@ export async function startShell(program: Command): Promise<void> {
 
     // ── Built-in shell commands ──────────────────────────────────────────────
     if (input === "exit" || input === "quit") {
+      setReplMode(false);
       console.log(chalk.dim("Goodbye 👋"));
       rl.close();
       process.exit(0);
@@ -182,14 +190,21 @@ export async function startShell(program: Command): Promise<void> {
 
       process.argv = savedArgv;
     } catch (err: unknown) {
-      if (err instanceof Error) {
+      if (err instanceof ShellExitError) {
+        // Command used shellExit() — this is normal, just continue the REPL
+      } else if (err instanceof Error) {
         // commander throws a CommanderError for --help, -V, unknown commands etc.
         const anyErr = err as any;
-        if (anyErr.code === "commander.helpDisplayed" || anyErr.code === "commander.version") {
+        if (
+          anyErr.code === "commander.helpDisplayed" ||
+          anyErr.code === "commander.version"
+        ) {
           // Already printed to stdout — just continue
         } else if (anyErr.code === "commander.unknownCommand") {
           console.error(
-            chalk.red(`  Unknown command: "${args[0]}". Type 'help' to see what's available.`)
+            chalk.red(
+              `  Unknown command: "${args[0]}". Type 'help' to see what's available.`,
+            ),
           );
         } else if (anyErr.code === "commander.unknownOption") {
           console.error(chalk.red(`  ${err.message}`));
@@ -201,8 +216,6 @@ export async function startShell(program: Command): Promise<void> {
     }
 
     console.log(); // blank line for breathing room
-    // Print available commands after every execution to enhance user experience
-    printHelp();
     rl.prompt();
   });
 

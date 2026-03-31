@@ -245,7 +245,7 @@ import type { ProjectHealthConfig } from 'project-health';
 
 export const config: ProjectHealthConfig = {
   proxy: {
-    url: "https://api.projecthealth.io/v1",
+    url: "http://localhost:3000/v1",
     timeout: 30000,
   },
 

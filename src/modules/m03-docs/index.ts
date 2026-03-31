@@ -20,7 +20,11 @@ import { basename, join, extname, relative } from "node:path";
 import { simpleGit, SimpleGit } from "simple-git";
 import { shouldIgnorePath } from "../../utils/ignore.js";
 import { createLogger } from "../../utils/logger.js";
-import { chat, createAIClient, truncateForContext } from "../../proxy/ai-client.js";
+import {
+  chat,
+  createAIClient,
+  truncateForContext,
+} from "../../proxy/ai-client.js";
 
 const log = createLogger("ph:docs");
 
@@ -282,7 +286,8 @@ function buildSemanticDriftPrompt(args: {
 }): string {
   const sourceContext = args.sourceContexts
     .map((item) => {
-      const diffText = item.diff.trim() || "[no git diff available since last doc revision]";
+      const diffText =
+        item.diff.trim() || "[no git diff available since last doc revision]";
       return [
         `SOURCE FILE: ${item.file}`,
         `RECENT DIFF:`,
@@ -311,7 +316,9 @@ function parseSemanticDriftResult(response: string): SemanticDriftResult {
     const parsed = JSON.parse(trimmed) as Partial<SemanticDriftResult>;
     return {
       drift:
-        parsed.drift === "yes" || parsed.drift === "no" || parsed.drift === "uncertain"
+        parsed.drift === "yes" ||
+        parsed.drift === "no" ||
+        parsed.drift === "uncertain"
           ? parsed.drift
           : "uncertain",
       analysis: typeof parsed.analysis === "string" ? parsed.analysis : trimmed,
@@ -339,11 +346,16 @@ async function runSemanticDriftCheck(
   const docPath = staleFinding.file;
   if (!docPath) return null;
 
-  const relatedSources = findRelevantSourceFilesForDoc(docPath, sourceFiles, symbols);
+  const relatedSources = findRelevantSourceFilesForDoc(
+    docPath,
+    sourceFiles,
+    symbols,
+  );
   if (relatedSources.length === 0) {
     return {
       ...staleFinding,
-      aiAnalysis: "Semantic drift check skipped: no relevant source files matched this document.",
+      aiAnalysis:
+        "Semantic drift check skipped: no relevant source files matched this document.",
       metadata: {
         ...staleFinding.metadata,
         aiAnalysis:
@@ -381,25 +393,9 @@ async function runSemanticDriftCheck(
   );
 
   const proxyUrl = config.proxy?.url;
-  const apiKey = process.env.MEGALLM_API_KEY;
-  const clientTarget = proxyUrl || apiKey;
-  if (!clientTarget) {
-    return {
-      ...staleFinding,
-      aiAnalysis:
-        "Semantic drift check skipped: no MegaLLM proxy URL or API key is configured.",
-      metadata: {
-        ...staleFinding.metadata,
-        aiAnalysis:
-          "Semantic drift check skipped: no MegaLLM proxy URL or API key is configured.",
-        aiSemanticCheck: "skipped",
-        relatedSourceFiles: sourceContexts.map((item) => item.file),
-      },
-    };
-  }
 
   try {
-    const client = createAIClient(clientTarget);
+    const client = createAIClient(proxyUrl || undefined);
     const response = await chat(
       client,
       [
@@ -425,7 +421,8 @@ async function runSemanticDriftCheck(
 
     const parsed = parseSemanticDriftResult(response);
     const aiAnalysis =
-      parsed.recommendedDocChanges && parsed.recommendedDocChanges.trim().length > 0
+      parsed.recommendedDocChanges &&
+      parsed.recommendedDocChanges.trim().length > 0
         ? `${parsed.analysis}\nSuggested doc update: ${parsed.recommendedDocChanges}`
         : parsed.analysis;
 
@@ -847,7 +844,9 @@ export async function runDocsModule(
         )
       : stalenessFindings;
     findings.push(
-      ...staleDocFindings.filter((finding): finding is Finding => finding !== null),
+      ...staleDocFindings.filter(
+        (finding): finding is Finding => finding !== null,
+      ),
     );
 
     const changelogFinding = checkMissingChangelog(projectRoot);

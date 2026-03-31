@@ -1,20 +1,24 @@
 // AI-powered fix generator for project-health
 // Uses MegaLLM to generate patches for complex findings that can't be fixed with shell commands
 
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { join, resolve } from 'node:path';
-import type { Finding } from '../types/index.js';
-import { createAIClient, chat, truncateForContext } from '../proxy/ai-client.js';
-import type { FixResult } from './strategies.js';
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { join, resolve } from "node:path";
+import type { Finding } from "../types/index.js";
+import {
+  createAIClient,
+  chat,
+  truncateForContext,
+} from "../proxy/ai-client.js";
+import type { FixResult } from "./strategies.js";
 
 // Finding types that can be fixed by AI
-export const AI_FIXABLE_TYPES: Finding['type'][] = [
-  'MISSING_JSDOC',
-  'HIGH_COMPLEXITY',
-  'DEAD_EXPORT',
-  'STALE_DOC',
-  'TOO_MANY_PARAMETERS',
-  'API_DOC_DRIFT',
+export const AI_FIXABLE_TYPES: Finding["type"][] = [
+  "MISSING_JSDOC",
+  "HIGH_COMPLEXITY",
+  "DEAD_EXPORT",
+  "STALE_DOC",
+  "TOO_MANY_PARAMETERS",
+  "API_DOC_DRIFT",
 ];
 
 // System prompt for the AI fix engine
@@ -31,10 +35,10 @@ STRICT OUTPUT FORMAT:
 
 // Build the AI prompt for a specific finding type
 function buildFixPrompt(finding: Finding, fileContent: string): string {
-  const location = finding.line ? ` at line ${finding.line}` : '';
+  const location = finding.line ? ` at line ${finding.line}` : "";
   const truncated = truncateForContext(fileContent, 8000);
 
-  const typeInstructions: Partial<Record<Finding['type'], string>> = {
+  const typeInstructions: Partial<Record<Finding["type"], string>> = {
     MISSING_JSDOC:
       `Add a JSDoc comment block (/** ... */) immediately before the function/class/interface${location}. ` +
       `Include @param tags for each parameter and @returns tag if there is a return value.`,
@@ -50,7 +54,7 @@ function buildFixPrompt(finding: Finding, fileContent: string): string {
       `Update both the function signature and all call sites in this same file.`,
 
     DEAD_EXPORT:
-      `The exported symbol${location} (${finding.metadata?.name ?? ''}) is unused outside this file. ` +
+      `The exported symbol${location} (${finding.metadata?.name ?? ""}) is unused outside this file. ` +
       `Remove the \`export\` keyword to make it module-private. ` +
       `If everything that referenced it was in the same file, that is sufficient.`,
 
@@ -63,10 +67,11 @@ function buildFixPrompt(finding: Finding, fileContent: string): string {
       `Update the JSDoc/comment to match the real parameters and return type.`,
   };
 
-  const instruction = typeInstructions[finding.type] ??
+  const instruction =
+    typeInstructions[finding.type] ??
     `Fix the following issue: ${finding.message}`;
 
-  return `FILE: ${finding.file ?? 'unknown'}
+  return `FILE: ${finding.file ?? "unknown"}
 
 ISSUE TYPE: ${finding.type}
 SEVERITY: ${finding.severity}
@@ -86,33 +91,45 @@ function applyUnifiedDiff(
   diffText: string,
 ): { success: boolean; error?: string } {
   try {
-    const lines = diffText.split('\n');
+    const lines = diffText.split("\n");
 
     // Simple hunk parser — handles single-file diffs
-    const hunks: Array<{ startLine: number; removes: string[]; adds: string[] }> = [];
-    let currentHunk: { startLine: number; removes: string[]; adds: string[] } | null = null;
+    const hunks: Array<{
+      startLine: number;
+      removes: string[];
+      adds: string[];
+    }> = [];
+    let currentHunk: {
+      startLine: number;
+      removes: string[];
+      adds: string[];
+    } | null = null;
 
     for (const line of lines) {
-      if (line.startsWith('---') || line.startsWith('+++')) continue;
-      if (line.startsWith('@@')) {
+      if (line.startsWith("---") || line.startsWith("+++")) continue;
+      if (line.startsWith("@@")) {
         const match = line.match(/@@ -(\d+)/);
         if (match) {
-          currentHunk = { startLine: parseInt(match[1], 10), removes: [], adds: [] };
+          currentHunk = {
+            startLine: parseInt(match[1], 10),
+            removes: [],
+            adds: [],
+          };
           hunks.push(currentHunk);
         }
         continue;
       }
       if (currentHunk) {
-        if (line.startsWith('-')) currentHunk.removes.push(line.slice(1));
-        else if (line.startsWith('+')) currentHunk.adds.push(line.slice(1));
+        if (line.startsWith("-")) currentHunk.removes.push(line.slice(1));
+        else if (line.startsWith("+")) currentHunk.adds.push(line.slice(1));
       }
     }
 
     if (hunks.length === 0) {
-      return { success: false, error: 'No hunks found in diff' };
+      return { success: false, error: "No hunks found in diff" };
     }
 
-    const fileLines = readFileSync(filePath, 'utf-8').split('\n');
+    const fileLines = readFileSync(filePath, "utf-8").split("\n");
     let offset = 0;
 
     for (const hunk of hunks) {
@@ -121,7 +138,11 @@ function applyUnifiedDiff(
       let idx = start;
       if (hunk.removes.length > 0) {
         // Try to find matching sequence
-        outer: for (let i = Math.max(0, start - 3); i < Math.min(fileLines.length, start + 10); i++) {
+        outer: for (
+          let i = Math.max(0, start - 3);
+          i < Math.min(fileLines.length, start + 10);
+          i++
+        ) {
           for (let j = 0; j < hunk.removes.length; j++) {
             if (fileLines[i + j] !== hunk.removes[j]) continue outer;
           }
@@ -133,7 +154,7 @@ function applyUnifiedDiff(
       offset += hunk.adds.length - hunk.removes.length;
     }
 
-    writeFileSync(filePath, fileLines.join('\n'), 'utf-8');
+    writeFileSync(filePath, fileLines.join("\n"), "utf-8");
     return { success: true };
   } catch (err) {
     return {
@@ -161,9 +182,7 @@ export async function aiFixFinding(
     };
   }
 
-  const filePath = finding.file
-    ? resolve(projectRoot, finding.file)
-    : null;
+  const filePath = finding.file ? resolve(projectRoot, finding.file) : null;
 
   if (!filePath || !existsSync(filePath)) {
     return {
@@ -172,32 +191,32 @@ export async function aiFixFinding(
     };
   }
 
-  const baseUrl = options.proxyUrl ?? process.env.MEGALLM_BASE_URL ?? 'https://ai.megallm.io/v1';
-  const apiKey = process.env.MEGALLM_API_KEY;
-
-  if (!apiKey && !options.proxyUrl) {
-    return {
-      success: false,
-      message: 'AI fix requires MEGALLM_API_KEY or --proxy <url> to be set',
-    };
-  }
+  const baseUrl =
+    options.proxyUrl ??
+    process.env.PROJECT_HEALTH_BACKEND_URL ??
+    process.env.MEGALLM_BASE_URL ??
+    "http://localhost:3000/v1";
 
   try {
-    const fileContent = readFileSync(filePath, 'utf-8');
-    const client = createAIClient(options.proxyUrl ?? apiKey!);
+    const fileContent = readFileSync(filePath, "utf-8");
+    const client = createAIClient(baseUrl);
 
     const userPrompt = buildFixPrompt(finding, fileContent);
 
-    const response = await chat(client, [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: userPrompt },
-    ], {
-      temperature: 0.1, // Low temperature for deterministic code fixes
-    });
+    const response = await chat(
+      client,
+      [
+        { role: "system", content: SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      {
+        temperature: 0.1, // Low temperature for deterministic code fixes
+      },
+    );
 
     const trimmed = response.trim();
 
-    if (trimmed === 'CANNOT_FIX' || trimmed === '') {
+    if (trimmed === "CANNOT_FIX" || trimmed === "") {
       return {
         success: false,
         message: `AI was unable to generate a safe patch for: ${finding.message}`,
@@ -208,7 +227,7 @@ export async function aiFixFinding(
       return {
         success: true,
         message: `[dry-run] AI would apply the following patch to ${finding.file}:\n\n${trimmed}`,
-        command: 'AI patch (dry-run)',
+        command: "AI patch (dry-run)",
       };
     }
 

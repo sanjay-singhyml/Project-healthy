@@ -1,26 +1,28 @@
 {
-  "name": "project-health-ai-proxy",
-  "version": "1.0.0",
-  "description": "Standalone backend proxy for Project Health AI features",
-  "main": "dist/server.js",
+  "name": "project-health-backend",
+  "version": "2.0.0",
+  "description": "Standalone AI backend for Project Health CLI — deployable, scalable, self-hostable",
   "type": "module",
+  "main": "dist/index.js",
   "scripts": {
-    "start": "node dist/server.js",
-    "dev": "tsx watch src/server.ts",
-    "build": "tsc"
+    "start": "node dist/index.js",
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc",
+    "docker:build": "docker build -t project-health-backend .",
+    "docker:run": "docker run -p 3000:3000 --env-file .env.local project-health-backend"
   },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "jsonwebtoken": "^9.0.2",
-    "openai": "^4.28.0"
+    "openai": "^4.28.0",
+    "uuid": "^9.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
-    "@types/jsonwebtoken": "^9.0.6",
     "@types/node": "^20.11.24",
+    "@types/uuid": "^9.0.8",
     "tsx": "^4.7.1",
     "typescript": "^5.3.3"
   }

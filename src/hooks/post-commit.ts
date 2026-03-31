@@ -7,8 +7,7 @@ import { simpleGit, SimpleGit } from "simple-git";
 import { createCacheManager } from "../cache/index.js";
 import { buildDocsIndex } from "../cache/docs-builder.js";
 import { createConfigManager } from "../config/index.js";
-import { getAuthToken } from "../auth/index.js";
-import { MODEL, BASE_URL } from "../proxy/ai-client.js";
+import { MODEL } from "../proxy/ai-client.js";
 import { createLogger } from "../utils/logger.js";
 
 const log = createLogger("ph:cli");
@@ -234,15 +233,6 @@ async function updateDocSectionWithAI(
   sectionContent: string,
   commitHash: string,
 ): Promise<string> {
-  const jwt = await getAuthToken();
-
-  if (!jwt) {
-    console.log(
-      'No auth token found. Run "ph auth login" to enable AI features.',
-    );
-    return sectionContent;
-  }
-
   const prompt = `You are updating documentation for a source file that was just changed.
 
 Source file changed: ${sourceFile}
@@ -262,12 +252,11 @@ Just return the new section content, nothing else.`;
 
   try {
     const response = await fetch(
-      `${process.env.PH_PROXY_URL || "https://api.projecthealth.io/v1"}/v1/chat/completions`,
+      `${process.env.PH_PROXY_URL || process.env.PROJECT_HEALTH_BACKEND_URL || "http://localhost:3000/v1"}/v1/chat/completions`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${jwt}`,
         },
         body: JSON.stringify({
           model: MODEL,

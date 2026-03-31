@@ -1,6 +1,6 @@
 {
   "name": "project-healthy",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "AI-powered health score for software repositories - CLI tool with 8 parallel analysis modules",
   "main": "dist/index.js",
   "files": [
@@ -52,8 +52,6 @@
     "fast-xml-parser": "^5.5.8",
     "glob": "^11.0.0",
     "js-yaml": "^4.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "keytar": "^7.9.0",
     "open": "^10.1.0",
     "openai": "^4.77.0",
     "ora": "^8.1.1",
@@ -66,7 +64,6 @@
     "@types/express": "^5.0.0",
     "@types/glob": "^8.1.0",
     "@types/js-yaml": "^4.0.9",
-    "@types/jsonwebtoken": "^9.0.7",
     "@types/node": "^22.19.15",
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.19.1",

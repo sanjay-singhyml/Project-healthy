@@ -60,6 +60,7 @@ export class WebDashboard {
       console.log(
         `\n🌊 project-health Web Dashboard running at http://localhost:${this.port}\n`,
       );
+      console.log("  Press 'q' + Enter or Ctrl+C to stop the server.\n");
     });
 
     try {
@@ -67,6 +68,20 @@ export class WebDashboard {
       await open.default(`http://localhost:${this.port}`);
     } catch {
       console.log(`Open your browser to: http://localhost:${this.port}`);
+    }
+
+    // Listen for 'q' on stdin to shut down
+    if (process.stdin.isTTY) {
+      process.stdin.setRawMode(false);
+      process.stdin.resume();
+      process.stdin.setEncoding("utf-8");
+      process.stdin.on("data", (key: string) => {
+        if (key.trim().toLowerCase() === "q") {
+          console.log("\nShutting down dashboard...");
+          server.close();
+          process.exit(0);
+        }
+      });
     }
 
     // Keep process alive for web server

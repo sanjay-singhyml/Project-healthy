@@ -243,11 +243,11 @@ console.log(api.sharedValue);
     expect(deadExports).toHaveLength(0);
   });
 
-  it("only reports duplicate code when the duplicate block exceeds 50 lines", async () => {
+  it("only reports duplicate code when the duplicate block exceeds 200 lines", async () => {
     const TEST_DIR = getTestDir();
     mkdirSync(join(TEST_DIR, "src"), { recursive: true });
 
-    const duplicatedBlock = Array.from({ length: 51 }, (_, index) =>
+    const duplicatedBlock = Array.from({ length: 201 }, (_, index) =>
       `const value${index} = ${index};`,
     ).join("\n");
 
@@ -272,14 +272,14 @@ console.log(api.sharedValue);
     expect(duplicateFindings.length).toBeGreaterThan(0);
   });
 
-  it("only flags large files above 1000 lines", async () => {
+  it("only flags large files above 5000 lines", async () => {
     const TEST_DIR = getTestDir();
     mkdirSync(join(TEST_DIR, "src"), { recursive: true });
 
-    const thousandLines = Array.from({ length: 1000 }, (_, index) =>
+    const thousandLines = Array.from({ length: 5000 }, (_, index) =>
       `export const value${index} = ${index};`,
     ).join("\n");
-    const thousandOneLines = Array.from({ length: 1001 }, (_, index) =>
+    const thousandOneLines = Array.from({ length: 5001 }, (_, index) =>
       `export const item${index} = ${index};`,
     ).join("\n");
 
@@ -298,6 +298,6 @@ console.log(api.sharedValue);
 
     expect(largeFileFindings).toHaveLength(1);
     expect(largeFileFindings[0]?.file).toBe("src/large.ts");
-    expect(largeFileFindings[0]?.metadata).toMatchObject({ lines: 1001 });
+    expect(largeFileFindings[0]?.metadata).toMatchObject({ lines: 5001 });
   });
 });

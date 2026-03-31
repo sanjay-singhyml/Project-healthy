@@ -856,7 +856,7 @@ function hashLines(lines: string[]): string {
 
 async function detectDuplicates(
   projectRoot: string,
-  minLines: number = 20,
+  minLines: number = 200,
 ): Promise<Finding[]> {
   const findings: Finding[] = [];
   const files = findSourceFiles(projectRoot);
@@ -881,7 +881,7 @@ async function detectDuplicates(
       const lines = content.split("\n");
       const relPath = relative(projectRoot, file).replace(/\\/g, "/");
 
-      if (lines.length > 3000) {
+      if (lines.length > 5000) {
         findings.push({
           id: uuidv4(),
           moduleId: MODULE_ID,
@@ -1017,7 +1017,7 @@ export async function runQualityModule(
       runComplexityAnalysis(projectRoot, threshold, fileCache),
       detectDeadExports(projectRoot),
       detectDuplicates(projectRoot, duplicateMin),
-      checkMaxLineLength(projectRoot, 200),
+      checkMaxLineLength(projectRoot, 500),
       validateTsConfig(projectRoot),
     ]);
 
