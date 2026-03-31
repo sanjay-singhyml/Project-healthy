@@ -801,7 +801,8 @@ export function registerDashboardCommand(program: Command): void {
     .option(
       "--proxy <url>",
       "Proxy URL",
-      process.env.PROJECT_HEALTH_BACKEND_URL ?? "http://localhost:3000",
+      process.env.PROJECT_HEALTH_BACKEND_URL ??
+        "https://project-healthy.vercel.app",
     )
     .action(async (options) => {
       const port = parseInt(options.port, 10) || 8080;

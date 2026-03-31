@@ -30,10 +30,9 @@ documentation updates.
   typical projects).
 - **Unified Scoring**: 0–100 weighted health score with actionable insights.
 - **MegaLLM-powered AI**: High-quality LLM integrations routed through a
-  backend proxy (supporting Claude, GPT, Gemini, etc.).
-- **Zero-Code Model Swapping**: Switch LLM providers simply by updating the
-  proxy's `.env` file.
-- **Open Access**: No authentication required — download the CLI from npm and start using AI features immediately.
+  hosted backend (supporting Claude, GPT, Gemini, etc.).
+- **Zero-Config AI**: Install from npm and start using AI features immediately
+  — no API keys, no authentication, no setup.
 - **IDE & CI/CD Support**: VS Code extension included, alongside CI pipeline
   integration (e.g., block merges if score drops below a threshold).
 
@@ -58,12 +57,17 @@ support AI grounding and temporal state checks:
 - `last-scan.json`: Context injector for AI queries.
 - `sessions/`: Chat history files for persistent context.
 
-### 3. AI Proxy Architecture
+### 3. AI Backend Architecture
 
-AI calls are brokered via a developer-operated backend microservice. The proxy
-interacts with the MegaLLM API using secured keys on the server side. No
-third-party LLM API keys run on the developer's local machine. The CLI connects
+AI calls are routed through a hosted backend at `https://project-healthy.vercel.app/v1`.
+The backend interacts with the MegaLLM API using secured keys on the server side.
+No third-party LLM API keys run on the developer's local machine. The CLI connects
 directly to the hosted backend with no authentication required.
+
+```
+CLI (ph) → https://project-healthy.vercel.app/v1 → MegaLLM API
+          (hosted, public, no auth)               (server-side API key)
+```
 
 ---
 
@@ -94,8 +98,8 @@ directly to the hosted backend with no authentication required.
 
 ## 🤖 AI Features (Powered by MegaLLM)
 
-All features are invoked securely through the proxy and maintain grounded
-context via the local `.ph-cache/`.
+All AI features are powered by the hosted backend and maintain grounded
+context via the local `.ph-cache/`. No API keys or authentication required.
 
 1. **`ph ask` (Natural Language Interrogation)** Ask plain-English questions
    about the codebase. Replaces generic advice with specific `file:line` citations.
@@ -120,8 +124,8 @@ context via the local `.ph-cache/`.
 
 **Strictly TypeScript & Node.js ecosystem (Zero Java)**
 
-- **CLI**: `commander`, `chalk`, `ora`, `execa`, `keytar`, `pkg`
-- **AI Integration**: `openai` (configured to point to MegaLLM baseURL)
+- **CLI**: `commander`, `chalk`, `ora`, `execa`, `pkg`
+- **AI Integration**: `openai` (configured to point to hosted backend)
 - **Security Checkers**: `license-checker`, `js-yaml`, `dotenv`
 - **Code Analyzers**: `@typescript-eslint/typescript-estree`,
   `complexity-report-es`, `ts-prune`, `jscpd`
@@ -131,22 +135,18 @@ context via the local `.ph-cache/`.
 
 ## 🚀 Getting Started
 
-### Hosted NPM Installation (Recommended)
+### Installation (NPM)
 
-**No API keys or complex configuration needed!** Just install from NPM and start using:
+**Zero configuration needed!** Just install from NPM and start using:
 
 ```bash
-# Install the package globally
 npm install -g project-healthy
-
-# Navigate to your project
 cd your-project-folder
-
-# Jump into the interactive CLI shell
 ph init
 ```
 
-The CLI automatically uses our hosted backend for AI features out of the box.
+The CLI automatically uses our hosted backend (`https://project-healthy.vercel.app/v1`)
+for AI features. No API keys, no auth tokens, no environment variables to set.
 
 ### 1. Initialization / Interactive Shell
 
@@ -176,10 +176,8 @@ for an interactive report, `--format sarif` for security tool integration, or
 ph dashboard --port 8080
 ```
 
-Launches a robust data integration Web Dashboard. We have implemented robust,
-null-safe parsing for overview pages. If you're building upon our Dashboard UI
-(e.g. Discharge Station Cards, Rain Gauge, Barrage Level), it includes
-responsive design updates via flexible wrapping utilities, ensuring metrics won't overlap.
+Launches a robust data integration Web Dashboard with responsive design updates
+via flexible wrapping utilities, ensuring metrics won't overlap.
 
 ### 4. Interactive Repository Explorer
 
@@ -201,11 +199,10 @@ ph fix --interactive
 
 # Preview AI-powered fix patches without applying
 ph fix --dry-run
-```
 
-The auto-fix engine is fully capable of treating high-severity findings
-like secret leaks, complexity limits (e.g., M-02 code clones, sliding window threshold alerts),
-and large file technical debt out of the box using MegaLLM!
+# AI-powered fixes (uses hosted backend, no API key needed)
+ph fix --ai
+```
 
 ### 6. Additional Commands
 
@@ -233,8 +230,7 @@ ph chat
 
 ## 💻 Running the CLI Locally (From Source)
 
-If you'd like to extend `project-health` or run the uncompiled source code yourself,
-you need to clone the repository and configure the required environment formats:
+If you'd like to extend `project-health` or run the uncompiled source code yourself:
 
 ### Step 1. Clone & Build
 
@@ -249,75 +245,64 @@ _(Optional) Create a global link for the local binary:_
 
 ```bash
 npm link
-# Now you can use 'project-health' globally calling your local build
 ```
 
-### Step 2. CLI Environment Variables (`.env`)
+### Step 2. Optional Environment Variables
 
-You can supply optional tokens to extend CLI capabilities (e.g. GitHub/GitLab integrations)
-by creating a `.env` in the root of the standard repo.
-
-Copy the `.env.example` to `.env` in the root directory and configure as needed:
+The CLI works out of the box with the hosted backend. You only need `.env` for
+optional integrations like GitHub/GitLab:
 
 ```env
-# Point to your own locally running AI proxy
-PROJECT_HEALTH_BACKEND_URL="http://localhost:3000/v1"
+# Optional: Override the hosted backend URL (e.g., for local development)
+# PROJECT_HEALTH_BACKEND_URL="https://project-healthy.vercel.app/v1"
 
-# Needed for CI/CD checks (M-01) and PR complexity (M-06)
+# Optional: GitHub/GitLab tokens for M-01 (CI/CD) and M-06 (PR Complexity)
 GITHUB_TOKEN=ghp_your_github_token_here
 GITLAB_TOKEN=glpat_your_gitlab_token_here
 
-# Needed for Snyk Dependency Security checks (M-05)
+# Optional: Snyk token for M-05 (Dependency Security)
 SNYK_TOKEN=your_snyk_token_here
 ```
 
 ---
 
-## Standalone AI Proxy Microservice (`ai-proxy/`)
+## 🖥️ Self-Hosting the AI Backend
 
-For developers intending to utilize their own MegaLLM API keys, the proxy
-logic has been isolated into its own production-ready Node.js microservice
-(`ai-proxy/`). This proxy centralizes AI request handling, secures API keys
-preventing leaks to client devices, and manages API rate limits locally.
-No authentication is required — anyone can use the AI features.
+The AI backend is deployed at `https://project-healthy.vercel.app/v1` and works
+for all users. If you want to self-host your own instance:
 
-### Step 1: Proxy Configuration
-
-Navigate to the `ai-proxy` directory and setup environment variables:
+### Step 1: Deploy the `ai-proxy`
 
 ```bash
 cd ai-proxy
-cp .env.example .env.local
+npm install
+npm run build
 ```
 
-### Step 2: Edit `.env.local`
+Deploy to Vercel, Railway, or any Node.js hosting provider.
 
-Update `.env.local` to point to your AI provider variables, limits, and server settings:
+### Step 2: Configure Environment Variables
+
+Set these on your hosting platform:
 
 ```env
-# AI Provider (MegaLLM API integration)
 MEGALLM_API_KEY=sk-your-megallm-api-key
 MEGALLM_BASE_URL=https://ai.megallm.io/v1
-MEGALLM_MODEL=claude-sonnet-4-6
-
-# Configuration
+MEGALLM_MODEL=openai-gpt-oss-120b
 MEGALLM_MAX_TOKENS=120000
 MEGALLM_TEMPERATURE=0.7
-
-# Proxy network
 PORT=3000
 RATE_LIMIT_RPM=60
 ```
 
-### Step 3: Start the Microservice
-
-Start the decoupled proxy! Once deployed, it handles LLM interactions securely.
+### Step 3: Point CLI to Your Instance
 
 ```bash
-npm run start:proxy   # from the repo root
-# OR
-cd ai-proxy && npm start
+ph chat "hello" --proxy https://your-deployed-backend.com/v1
 ```
 
-Make sure your client configuring the CLI `PROJECT_HEALTH_BACKEND_URL` is pointing directly
-at this proxy URL (e.g., `http://localhost:3000/v1`).
+Or set in `.env`:
+
+```env
+PROJECT_HEALTH_BACKEND_URL="https://your-deployed-backend.com/v1"
+```

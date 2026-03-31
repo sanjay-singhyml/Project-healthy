@@ -252,7 +252,7 @@ Just return the new section content, nothing else.`;
 
   try {
     const response = await fetch(
-      `${process.env.PH_PROXY_URL || process.env.PROJECT_HEALTH_BACKEND_URL || "http://localhost:3000/v1"}/v1/chat/completions`,
+      `${process.env.PH_PROXY_URL || process.env.PROJECT_HEALTH_BACKEND_URL || "https://project-healthy.vercel.app/v1"}/v1/chat/completions`,
       {
         method: "POST",
         headers: {

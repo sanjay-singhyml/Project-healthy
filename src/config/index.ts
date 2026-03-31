@@ -66,7 +66,7 @@ const defaultModulesConfig: ModulesConfig = {
 
 const defaultConfig: ProjectHealthConfig = {
   proxy: {
-    url: "http://localhost:3000/v1",
+    url: "https://project-healthy.vercel.app/v1",
     timeout: 30000,
   },
   modules: defaultModulesConfig,

@@ -195,7 +195,7 @@ export async function aiFixFinding(
     options.proxyUrl ??
     process.env.PROJECT_HEALTH_BACKEND_URL ??
     process.env.MEGALLM_BASE_URL ??
-    "http://localhost:3000/v1";
+    "https://project-healthy.vercel.app/v1";
 
   try {
     const fileContent = readFileSync(filePath, "utf-8");

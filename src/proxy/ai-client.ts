@@ -17,15 +17,17 @@ config();
 // Read the model from the environment first, then fall back to the documented default.
 export const MODEL = process.env.MEGALLM_MODEL?.trim() || "claude-sonnet-4-6";
 
-// Base URL for MegaLLM — defaults to hosted backend for zero-config UX
+export const DEPLOYED_BACKEND_URL = "https://project-healthy.vercel.app/v1";
+
+// Base URL — prefers PROJECT_HEALTH_BACKEND_URL, then falls back to deployed backend
 export const BASE_URL =
   process.env.PROJECT_HEALTH_BACKEND_URL ||
   process.env.MEGALLM_BASE_URL ||
-  "http://localhost:3000/v1";
+  DEPLOYED_BACKEND_URL;
 
 // Hosted backend URL for zero-config usage
 export const HOSTED_BACKEND_URL =
-  process.env.PROJECT_HEALTH_BACKEND_URL || "http://localhost:3000/v1";
+  process.env.PROJECT_HEALTH_BACKEND_URL || DEPLOYED_BACKEND_URL;
 
 // Timeout configuration
 const TIMEOUT_MS = parseInt(process.env.MEGALLM_TIMEOUT || "60000", 10);

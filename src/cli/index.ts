@@ -726,7 +726,7 @@ async function runChat(opts: {
     opts.proxy ||
     process.env.PROJECT_HEALTH_BACKEND_URL ||
     process.env.MEGALLM_BASE_URL ||
-    "http://localhost:3000/v1";
+    "https://project-healthy.vercel.app/v1";
   const client = createAIClient(baseUrl);
 
   // Check if RAG cache is available
@@ -1109,7 +1109,7 @@ program
         options.proxy ||
         process.env.PROJECT_HEALTH_BACKEND_URL ||
         process.env.MEGALLM_BASE_URL ||
-        "http://localhost:3000/v1";
+        "https://project-healthy.vercel.app/v1";
       const client = createAIClient(baseUrl);
 
       reviewSpinner.succeed("Code analysis complete");
@@ -1401,7 +1401,7 @@ program
         options.proxy ||
         process.env.PROJECT_HEALTH_BACKEND_URL ||
         process.env.MEGALLM_BASE_URL ||
-        "http://localhost:3000/v1";
+        "https://project-healthy.vercel.app/v1";
       const client = createAIClient(baseUrl);
 
       const formatter = createStreamFormatter();
