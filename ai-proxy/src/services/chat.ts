@@ -58,7 +58,7 @@ export async function executeChat(
   req: ChatRequest,
   apiKey: string,
 ): Promise<{
-  client: InstanceType<typeof OpenAI>;
+  client: OpenAI;
   model: string;
   messages: ChatCompletionMessageParam[];
 }> {
